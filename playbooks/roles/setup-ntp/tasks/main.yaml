@@ -1,0 +1,21 @@
+---
+- name: Install 'chrony' package
+  import_role:
+    name: install-packages
+  vars:
+    install_packages_list:
+    - chrony
+
+- name: Create config for chronyd
+  template:
+    src: "chrony.conf.j2"
+    dest: "/etc/chrony.conf"
+
+- name: Set timezone for a node
+  command: "timedatectl set-timezone UTC"
+
+- name: Make sure 'chronyd' service is enabled and running
+  service:
+    name: chronyd
+    state: restarted
+    enabled: yes

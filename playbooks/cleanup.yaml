@@ -1,0 +1,103 @@
+# Expected vars:
+#
+# - 'config_filepath' - required. It is expected to be provided and must
+# store filepath for the config file.
+#
+# Command to run this playbook:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i localhost, \
+#     cleanup.yaml \
+#     -e config_filepath=/path/to/the/config.yaml
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  tasks:
+  - name: Read and validate config file
+    validate_vms_provisioning_config:
+      path: "{{ config_filepath }}"
+    register: config_output
+  - name: Save config to a var
+    set_fact:
+      config: "{{ config_output.config }}"
+  - name: DEBUG. Print parsed config file data
+    debug:
+      msg: "{{ config }}"
+
+  # Make sure we have reference to the provisioned VMs
+  - name: Add master nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_masters
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.masters.names }}"
+    when:
+    - "'dt_masters' not in groups"
+  - name: Add compute nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_nodes
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.nodes.names }}"
+    when:
+    - "'dt_nodes' not in groups"
+  - name: Add glusterfs nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_glusterfs
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.glusterfs.names }}"
+    when:
+    - "'dt_glusterfs' not in groups"
+  - name: Add glusterfs_registry nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_glusterfs_registry
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.glusterfs_registry.names }}"
+    when:
+    - "'dt_glusterfs_registry' not in groups"
+
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - role: repos-upstream-unregister
+
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  tasks:
+    - name: Delete all added VMs
+      ignore_errors: yes
+      vmware_guest:
+        hostname: "{{ config.vmware.host }}"
+        username: "{{ config.vmware.username }}"
+        password: "{{ config.vmware.password }}"
+        validate_certs: False
+        name: "{{ hostvars[item].inventory_hostname }}"
+        datacenter: "{{ config.vmware.datacenter }}"
+        cluster: "{{ config.vmware.cluster }}"
+        resource_pool: "{{ config.vmware.resource_pool }}"
+        folder: "/{{ config.vmware.datacenter }}/vm/{{ config.vmware.folder }}"
+        state: absent
+        force: true
+      with_items: "{{ (groups.get('dt_masters', []) +
+                       groups.get('dt_nodes', []) +
+                       groups.get('dt_glusterfs', []) +
+                       groups.get('dt_glusterfs_registry', [])) | unique }}"
+
+    - name: Update system hosts file
+      become: yes
+      become_user: root
+      ignore_errors: yes
+      lineinfile:
+        dest: "/etc/hosts"
+        state: absent
+        regexp: "{{ hostvars[item].inventory_hostname }}"
+        create: true
+      with_items: "{{ (groups.get('dt_masters', []) +
+                       groups.get('dt_nodes', []) +
+                       groups.get('dt_glusterfs', []) +
+                       groups.get('dt_glusterfs_registry', [])) | unique }}"

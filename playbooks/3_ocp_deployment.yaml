@@ -1,0 +1,111 @@
+# Expected vars:
+#
+# - 'config_filepath' - required. It is expected to be provided and must
+# store filepath for the config file.
+#
+# Command to run only this playbook using control playbook:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     control_playbook.yaml \
+#     -e config_filepath=/path/to/the/config.yaml \
+#     -e ocp_playbooks=playbooks/prerequisites.yml,playbooks/deploy_cluster.yml \
+#     --tags ocp_deployment
+#
+# Command to run this playbook directly:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     3_ocp_deployment.yaml \
+#     -e config_filepath=/path/to/the/config.yaml \
+#     -e ocp_playbooks=playbooks/prerequisites.yml,playbooks/deploy_cluster.yml
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  roles:
+  - name: validate_ocp_playbooks_var
+  vars:
+    fail_if_no_paybooks: yes
+  tasks:
+  - name: Get hostnames and IP addresses of each OpenShift host
+    shell: 'echo "$(hostname -s) $(hostname -i)"'
+    register: dt_hostnames_and_ip_addresses
+    delegate_to: "{{ item }}"
+    remote_user: "root"
+    with_items: "{{ (
+      groups.get('masters', []) + groups.get('nodes', []) +
+      groups.get('glusterfs', []) + groups.get('glusterfs_registry', [])) |
+      unique
+    }}"
+  - name: Parse hostnames and IP addresses cmd output into var data
+    set_fact:
+      dt_pl3_hostnames_ip_mapping: "{{
+        dt_pl3_hostnames_ip_mapping | default({}) | combine(
+          {item.stdout.split(' ')[0]: item.stdout.split(' ')[1]},
+          recursive=True
+        )
+      }}"
+    with_items: "{{ dt_hostnames_and_ip_addresses.results }}"
+
+- name: Update all the OCP nodes with routing info about each other
+  hosts: masters, nodes, glusterfs, glusterfs_registry
+  gather_facts: no
+  roles:
+  - add-routing-info-to-dnsmasq
+  - add-routing-info-to-etc-hosts
+  vars:
+    hostnames_ip_mapping: "{{
+      hostvars['localhost'].dt_pl3_hostnames_ip_mapping }}"
+
+- name: Set 'glusterfs_ip' and 'glusterfs_hostname' vars for Gluster nodes
+  hosts: glusterfs, glusterfs_registry
+  gather_facts: no
+  tasks:
+  - name: Get Gluster node hostname and IP address
+    shell: 'echo "$(hostname -s) $(hostname -i)"'
+    register: dt_gluster_hostname_and_ip_address
+  - name:
+    set_fact:
+      glusterfs_hostname: "{{
+        dt_gluster_hostname_and_ip_address.stdout.split(' ')[0] }}"
+      glusterfs_ip: "{{
+        dt_gluster_hostname_and_ip_address.stdout.split(' ')[1] }}"
+
+- import_playbook: "{{
+    (lookup('env', 'VIRTUAL_ENV') + '/usr/share/ansible/openshift-ansible/') +
+    ((ocp_playbooks |
+      default('../../../../../../playbooks/noop.yaml')).split(',') |list)[0] 
+  }}"
+  when: "((ocp_playbooks | default('')).split(',') | list | length | int > 0)"
+
+- import_playbook: "{{
+    (lookup('env', 'VIRTUAL_ENV') + '/usr/share/ansible/openshift-ansible/') +
+    (((ocp_playbooks |
+      default(',../../../../../../playbooks/noop.yaml')).split(',') |
+        list)[1] | default('../../../../../../playbooks/noop.yaml'))
+  }}"
+  when: "((ocp_playbooks | default('')).split(',') | list | length | int > 1)"
+
+- import_playbook: "{{
+    (lookup('env', 'VIRTUAL_ENV') + '/usr/share/ansible/openshift-ansible/') +
+    (((ocp_playbooks |
+      default(',,,../../../../../../playbooks/noop.yaml')).split(',') |
+        list)[2]) | default('../../../../../../playbooks/noop.yaml')
+  }}"
+  when: "((ocp_playbooks | default('')).split(',') | list | length | int > 2)"
+
+- import_playbook: "{{
+    (lookup('env', 'VIRTUAL_ENV') + '/usr/share/ansible/openshift-ansible/') +
+    (((ocp_playbooks |
+      default(',,,../../../../../../playbooks/noop.yaml')).split(',') |
+        list)[3]) | default('../../../../../../playbooks/noop.yaml')
+  }}"
+  when: "((ocp_playbooks | default('')).split(',') | list | length | int > 3)"
+
+- import_playbook: "{{
+    (lookup('env', 'VIRTUAL_ENV') + '/usr/share/ansible/openshift-ansible/') +
+    (((ocp_playbooks |
+      default(',,,,../../../../../../playbooks/noop.yaml')).split(',')|
+        list)[4]) | default('../../../../../../playbooks/noop.yaml')
+  }}"
+  when: "((ocp_playbooks | default('')).split(',') | list | length | int > 4)"

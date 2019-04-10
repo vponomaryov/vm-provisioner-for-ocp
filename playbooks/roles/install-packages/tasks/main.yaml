@@ -1,0 +1,24 @@
+---
+- name: Uninstall undesired packages
+  yum:
+    name: "{{ uninstall_packages_list | default([]) }}"
+    state: absent
+  become: true
+  become_user: root
+  retries: 5
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: "uninstall_packages_list | default([])"
+
+- name: Install requested packages
+  yum:
+    name: "{{ install_packages_list | default([]) }}"
+    state: present
+  become: true
+  become_user: root
+  retries: 5
+  delay: 5
+  register: result
+  until: result is succeeded
+  when: "install_packages_list | default([])"

@@ -1,0 +1,66 @@
+# NOTE(vponomar): this role should not be run from nodes
+# which are going to be rebooted.
+#
+#  Expected vars:
+#
+#  - 'hostnames' - list. Hostnames or IP addresses to run yum update at.
+#  - 'reboot_after_yum_update' - bool. Defines whther we need to reboot nodes
+#    after yum update or not.
+#  - 'sleep_after_reboot_sec' - int. Defines the time in seconds to sleep
+#    after reboot of nodes.
+---
+- name: Check that hostnames var is set and it is not empty list
+  fail:
+    msg: "Role 'yum-update-and-reboot' expects 'hostnames' var
+          to be set as a list of hostnames which should be rebooted."
+  when: "(hostnames is not defined) or (hostnames | length < 1)"
+
+- name: Run yum update command
+  command: "yum update -y"
+  delegate_to: "{{ item }}"
+  remote_user: "root"
+  with_items: "{{ hostnames }}"
+  async: 3600
+  poll: 0
+  register: async_yum_update
+
+- name: Check async status of yum update commands
+  async_status:
+    jid: "{{ loop_item.ansible_job_id }}"
+  with_items: "{{ async_yum_update.results }}"
+  delegate_to: "{{ loop_item.item }}"
+  remote_user: "root"
+  loop_control:
+    loop_var: "loop_item"
+  register: async_poll_results
+  until: async_poll_results.finished
+  retries: 360
+  delay: 10
+
+- block:
+  - name: Reboot machine to apply all major changes to the system if exist
+    shell: "sleep 3 ; /sbin/shutdown -r now 'Reboot triggered by Ansible'"
+    async: 1
+    poll: 0
+    ignore_errors: true
+    delegate_to: "{{ item }}"
+    remote_user: "root"
+    with_items: "{{ hostnames }}"
+
+  - name: Sleep for some time to let machines to go down
+    command: "sleep 20"
+
+  - name: Wait for machines to go up
+    wait_for:
+      host: "{{ item }}"
+      port: 22
+      delay: 0
+      timeout: 420
+      connect_timeout: 5
+      state: started
+    with_items: "{{ hostnames }}"
+
+  - name: Sleep for some time to let services start up in time
+    command: "sleep {{ sleep_after_reboot_sec | default(60) }}"
+
+  when: "reboot_after_yum_update is defined and (reboot_after_yum_update | bool)"

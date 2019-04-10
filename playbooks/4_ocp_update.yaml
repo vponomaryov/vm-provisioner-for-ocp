@@ -1,0 +1,166 @@
+# Expected vars:
+#
+# - 'config_filepath' - required. It is expected to be provided and must
+# store filepath for the config file.
+#
+# Command to run only this playbook using control playbook:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     control_playbook.yaml \
+#     -e config_filepath=/path/to/the/config.yaml \
+#     --tags ocp_update
+#
+# Command to run this playbook directly:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     4_ocp_update.yaml \
+#     -e config_filepath=/path/to/the/config.yaml
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  tasks:
+  - name: Read and validate config file
+    validate_vms_provisioning_config:
+      path: "{{ config_filepath }}"
+    register: config_output
+  - name: Save config to a var
+    set_fact:
+      config: "{{ config_output.config }}"
+  - name: Save shortcut to one of the config vars
+    set_fact:
+      cfg_upstream: "{{ config.vm.repo.upstream }}"
+      cfg_downstream_repos: "{{
+        config.vm.repo.downstream.repositories_to_enable }}"
+  - name: DEBUG. Print parsed config file data
+    debug:
+      msg: "{{ config }}"
+
+  # Make sure we have reference to the provisioned VMs
+  - name: Add master nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_masters
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.masters.names }}"
+    when:
+    - "'dt_masters' not in groups"
+  - name: Add compute nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_nodes
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.nodes.names }}"
+    when:
+    - "'dt_nodes' not in groups"
+
+- hosts: dt_masters
+  gather_facts: no
+  run_once: yes
+  tasks:
+  # Make common compute nodes be schedulable for Heketi PODs
+  - name: Label common compute nodes be suitable for Heketi POD
+    oc_label:
+      name: '{{ item }}'
+      kind: 'node'
+      state: 'add'
+      labels:
+      - key: 'glusterfs'
+        value: 'heketi-host'
+      - key: 'heketi'
+        value: 'heketi-host'
+    with_items: "{{ groups.get('dt_nodes', []) }}"
+    ignore_errors: true
+
+  # Add public IP address for Heketi service
+  - block:
+    - name: Get IPv4 address of the main master node
+      command: "python -c \"import yaml ;
+        config = yaml.load(open('/etc/origin/master/master-config.yaml', 'r'));
+        print(config['kubernetesMasterConfig']['masterIP'])
+      \""
+      register: master_ipv4_raw
+    - set_fact:
+        master_ipv4: "{{ master_ipv4_raw.stdout_lines[0] }}"
+    - name: Read namespace of a Heketi deployment config
+      shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
+      register: heketi_namespace_raw
+    - name: Save namespace name in a separate var
+      set_fact:
+        heketi_namespace: "{{ heketi_namespace_raw.stdout.strip() }}"
+    - name: Read Heketi svc name
+      shell: "oc get svc -n {{ heketi_namespace
+        }} | grep -e heketi | grep -v heketi-db | awk '{ print $1}'"
+      register: heketi_svc_name_raw
+    - name: Set external IP for the Heketi service
+      command: "oc patch svc {{ heketi_svc_name_raw.stdout.strip()
+        }} --namespace {{ heketi_namespace
+        }} -p '{\"spec\":{\"externalIPs\":[\"{{ master_ipv4 }}\"]}}'"
+    when:
+    - "hostvars['localhost'].config.ocp_update.heketi.add_public_ip_address | bool"
+
+# Install heketi-client on master nodes
+- hosts: dt_masters
+  gather_facts: no
+  run_once: yes
+  tasks:
+  - set_fact:
+      upd_info: "{{hostvars['localhost'].config.ocp_update }}"
+
+  - name: Install Heketi client from URL if such specified
+    block:
+    - name: Remove existing heketi client from master node if present
+      package:
+        name: "heketi-client"
+        state: absent
+      retries: 5
+      delay: 5
+      register: result
+      until: result is succeeded
+    - command: "yum install -y {{ upd_info.heketi.client_package_url }}"
+    when:
+    - "upd_info.heketi.install_client_on_masters | bool"
+    - "upd_info.heketi.client_package_url is not none"
+
+  - block:
+    - name: Read namespace of a Heketi deployment config
+      shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
+      register: heketi_namespace_raw
+    - name: Get Heketi POD name on master node
+      command: "oc get pods -l glusterfs=heketi-storage-pod --no-headers {{ ''
+        }}-o=custom-columns=:.metadata.name --namespace {{
+        heketi_namespace_raw.stdout }}"
+      register: heketi_pod_name
+    - name: DEBUG. print heketi pod name output
+      debug:
+        msg: "{{ heketi_pod_name }}"
+    - name: Read heketi-client package version from Heketi POD
+      shell: "oc exec --namespace {{ heketi_namespace_raw.stdout
+        }} {{ heketi_pod_name.stdout_lines[0]
+        }} -- rpm -q heketi-client --queryformat{{ ''
+        }} '%{version}-%{release}\n' | cut -d '.' -f 1,2,3"
+      register: heketi_client_version
+    - name: DEBUG. Print heketi client version output
+      debug:
+        msg: "{{ heketi_client_version }}"
+    - name: Remove existing heketi client from master node if present
+      package:
+        name: "heketi-client"
+        state: absent
+      retries: 5
+      delay: 5
+      register: result
+      until: result is succeeded
+    - name: Install heketi client on master node
+      package:
+        name: "heketi-client-{{
+          heketi_client_version.stdout_lines[0].strip() }}*"
+        state: present
+      retries: 5
+      delay: 5
+      register: result
+      until: result is succeeded
+    when:
+    - "upd_info.heketi.install_client_on_masters | bool"
+    - "upd_info.heketi.client_package_url is none"

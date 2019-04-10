@@ -1,0 +1,16 @@
+---
+- name: Install common, for OCP nodes, set of packages
+  import_role:
+    name: install-packages
+  vars:
+    install_packages_list:
+    - PyYAML
+    - perl
+    - python-ipaddress
+    - net-tools
+    - python-six
+    - iptables
+    - iptables-services
+    - dnsmasq
+    - rpcbind
+    - sos

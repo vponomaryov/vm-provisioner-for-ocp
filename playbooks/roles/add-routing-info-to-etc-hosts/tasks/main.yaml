@@ -1,0 +1,23 @@
+#  Expected vars:
+#
+#  - 'hostnames_ip_mapping' - required. Should be dict, where
+#    keys are hostnames and values are IP addresses.
+---
+- name: Delete old left-overs if exist
+  become: yes
+  become_user: root
+  lineinfile:
+    dest: "/etc/hosts"
+    regexp: '{{ item.key }}'
+    state: absent
+    create: true
+  with_dict: "{{ hostnames_ip_mapping }}"
+
+- name: Add domain name mapping of new cluster nodes to the system hosts file
+  become: yes
+  become_user: root
+  lineinfile:
+    dest: "/etc/hosts"
+    line: "{{ item.value }} {{ item.key }}"
+    create: true
+  with_dict: "{{ hostnames_ip_mapping }}"

@@ -1,0 +1,28 @@
+# Virtual environment related stuff
+.tox/*
+
+# Log files
+*.log
+
+# Linux swap files range from .saa to .swp
+*.s[a-w][a-p]
+
+# Python bytecode and other related temp files
+*.pyc
+*.pyo
+*egg-info
+
+# Development environment files
+.project
+.pydevproject
+.idea
+.vagrant
+*.komodoproject
+
+# Cache and temp files
+.cache
+.pytest_cache
+*~
+
+# Deplyoment tool related files
+*.retry

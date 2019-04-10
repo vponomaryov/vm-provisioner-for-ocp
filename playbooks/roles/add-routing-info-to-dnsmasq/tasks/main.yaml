@@ -1,0 +1,31 @@
+#  Expected vars:
+#
+#  - 'hostnames_ip_mapping' - required. Should be dict, where
+#    keys are hostnames and values are IP addresses.
+#  - 'dnsmasq_config_filepath' - optional. Specify it when it is desired
+#    to have specific filepath for dnsmasq config.
+---
+- name: Create directory for dnsmasq config file if absent
+  file:
+    dest: /etc/dnsmasq.d
+    state: directory
+    mode: 0644
+
+- name: Create custom dnsmasq config file for current cluster
+  file:
+    dest: "{{ dnsmasq_config_filepath }}"
+    state: touch
+
+- name: Remove stale data from custom dnsmasq config file if exist
+  lineinfile:
+    dest: "{{ dnsmasq_config_filepath }}"
+    regexp: "{{ item.key }}"
+    state: absent
+  with_dict: "{{ hostnames_ip_mapping }}"
+
+- name: Write data to custom dnsmasq config file
+  lineinfile:
+    dest: "{{ dnsmasq_config_filepath }}"
+    line: "address=/{{ item.key }}/{{ item.value }}"
+    state: present
+  with_dict: "{{ hostnames_ip_mapping }}"

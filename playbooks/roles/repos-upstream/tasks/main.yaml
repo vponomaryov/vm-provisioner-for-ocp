@@ -1,0 +1,43 @@
+#  Expected vars:
+#
+#  - 'subscription_server' - required. RHSM server as string.
+#  - 'subscription_user' - required. Username for subscription.
+#  - 'subscription_pass' - required. Password for subscription.
+#  - 'subscription_pool' - required. Pool for subscription, i.e. 'Employee SKU'
+#  - 'repositories_to_enable' - required. List of repositories to enable.
+---
+- name: Allow rhsm a longer timeout to help out with subscription-manager
+  lineinfile:
+    dest: /etc/rhsm/rhsm.conf
+    line: 'server_timeout=600'
+    insertafter: '^proxy_password ='
+
+- name: Unregister system
+  import_role:
+    name: repos-upstream-unregister
+
+- name: Register system using Red Hat Subscription Manager
+  redhat_subscription:
+    server_hostname: "{{ subscription_server }}"
+    username: "{{ subscription_user }}"
+    password: "{{ subscription_pass }}"
+    pool: "{{ subscription_pool }}"
+    state: present
+  register: subscription_results
+  until: subscription_results is success
+  retries: 5
+  delay: 3
+
+- name: Get list of already enabled repos
+  shell: 'subscription-manager repos --list-enabled | sed -ne "s/^Repo ID:[^a-zA-Z0-9]*\(.*\)/\1/p"'
+  register: enabled_repos
+
+- name: Disable repositories which are not expected to be enabled
+  command: "subscription-manager repos --disable={{ item }}"
+  with_items:
+  - "{{ enabled_repos.stdout_lines | difference(repositories_to_enable) }}"
+
+- name: Enable requested repositories if not enabled yet
+  command: "subscription-manager repos --enable={{ item }}"
+  with_items:
+  - "{{ repositories_to_enable | difference(enabled_repos.stdout_lines) }}"

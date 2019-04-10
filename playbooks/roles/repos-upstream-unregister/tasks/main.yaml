@@ -1,0 +1,10 @@
+---
+- name: Check if system is already registered
+  command: "subscription-manager version"
+  register: node_subscribed
+
+- name: Unregister host
+  redhat_subscription:
+    state: absent
+#  when: "'Subscribed' in node_subscribed.stdout"
+  when: "'not registered' not in node_subscribed.stdout"

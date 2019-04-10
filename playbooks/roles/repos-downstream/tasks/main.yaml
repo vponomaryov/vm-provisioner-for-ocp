@@ -1,0 +1,36 @@
+# Expected vars:
+#
+# - 'repo_list' - required. It is expected to be provided and must be list of
+#   dicts with following structure:
+#   {"name": "FooName", "url": "http://foo.bar/x86_64/os", "cost": 1000}
+#   Where "cost" key is optional. By default it will be set to 1000.
+
+---
+- name: List all the enabled repos
+  shell: "yum repoinfo enabled | grep Repo-id | awk '{ print $3 }' |
+          awk '{ split($0,a,\"/\"); print a[1] }'"
+  register: all_repos
+
+- name: List all the upstream enabled repos
+  shell: 'subscription-manager repos --list-enabled |
+          sed -ne "s/^Repo ID:[^a-zA-Z0-9]*\(.*\)/\1/p"'
+  register: upstream_repos
+
+- name: Disable all the downstream repositories
+  yum_repository:
+    name: "{{ item }}"
+    state: "absent"
+  with_items: "{{
+    all_repos.stdout_lines | difference(upstream_repos.stdout_lines) }}"
+
+- name: Create requested downstream repositories
+  yum_repository:
+    name: "downstream-{{ item.name | regex_replace('^downstream-', '') }}"
+    baseurl: "{{ item.url | regex_replace('\\/$', '') }}"
+    description: "Description for downstream-{{
+      item.name | regex_replace('^downstream-', '') }}"
+    enabled: "yes"
+    gpgcheck: "no"
+    sslverify: "no"
+    cost: "{{ item.cost | default(1000) | int }}"
+  with_items: "{{ repo_list }}"

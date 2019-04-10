@@ -1,0 +1,40 @@
+# Expected vars:
+#
+# - 'ocp_playbooks' - list. Expected to be list of relative paths for playbooks
+#   located in the 'openshift-ansible' library directory.
+#   Paths must be relative from it's root.
+#   Example: 
+#     ocp_playbooks=playbooks/prerequisites.yml,playbooks/deploy_cluster.yml
+# - 'fail_if_no_paybooks' - bool. Allows us to fail task execution if first
+#   var is not defined.
+---
+- block:
+  - set_fact:
+      playbooks_base: "{{
+        (lookup('env', 'VIRTUAL_ENV') +
+        '/usr/share/ansible/openshift-ansible/')
+      }}"
+  - name: Parse 'ocp_playbooks' str var into list
+    set_fact:
+      ocp_playbooks_list: "{{ ocp_playbooks.split(',') | list }}"
+  - name: Check that provided playbooks exist
+    stat:
+      path: "{{ playbooks_base + item }}"
+    with_items: "{{ ocp_playbooks_list }}"
+    register: stat_results
+  - debug:
+      msg: "{{ stat_results }}"
+  - name: Validate playbooks presence
+    fail:
+      msg: "File '{{ item.item }}' is absent in the '{{ playbooks_base }}'."
+    with_items: "{{ stat_results.results }}"
+    when: "not (item.stat.exists | bool)"
+  when:
+  - "ocp_playbooks is defined"
+
+- name: Fail execution if 'ocp_playbooks' var is not defined
+  fail:
+    msg: "'ocp_playbooks' var is expected to be defined."
+  when:
+  - "ocp_playbooks is not defined"
+  - "fail_if_no_paybooks is defined and (fail_if_no_paybooks | bool)"

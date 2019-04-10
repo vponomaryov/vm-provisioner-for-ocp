@@ -1,0 +1,57 @@
+---
+- name: Clear yum cache
+  command: "yum clean all"
+  ignore_errors: true
+
+# NOTE(vponomar): we assume here that all the required repositories are enabled
+- name: Install RPMs
+  import_role:
+    name: install-packages
+  vars:
+    install_packages_list:
+    - iptables
+    - iptables-services
+    - redhat-storage-server
+    - gluster-block
+
+- name: Stop firewalld
+  service:
+    name: firewalld
+    state: stopped
+    enabled: no
+
+- name: Start Glusterd and iptables
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  with_items:
+  - iptables
+  - glusterd
+  - gluster-blockd
+
+- name: open gluster ports
+  iptables:
+    chain: INPUT
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+    ctstate: NEW
+    protocol: tcp
+    action: insert
+    match: tcp
+  with_items:
+  - '24007'
+  - '24008'
+  - '2222'
+  - '49152:49664'
+  - '24010'
+  - '3260'
+  - '111'
+  register: rule
+
+- name: save iptables
+  shell: iptables-save > /etc/sysconfig/iptables
+  when: rule|changed
+
+- name: "Set Gluster's 'brick-multiplex' option to 'on' as it is requirements"
+  shell: "yes | gluster vol set all cluster.brick-multiplex on"

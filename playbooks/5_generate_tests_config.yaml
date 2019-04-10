@@ -1,0 +1,207 @@
+# Expected vars:
+#
+# - 'config_filepath' - required. It is expected to be provided and must
+# store filepath for the config file.
+#
+# Command to run only this playbook using control playbook:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     control_playbook.yaml \
+#     -e config_filepath=/path/to/the/config.yaml \
+#     --tags tests_config
+#
+# Command to run this playbook directly:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     5_generate_tests_config.yaml \
+#     -e config_filepath=/path/to/the/config.yaml
+#
+# Requirements:
+# - 'yedit' module should be enabled. It will be enabled running this playbook
+#   via 'tox' command.
+# - playbook should run only on one host - OpenShift master node.
+#
+# Notes:
+# - tox's env name can be any of the following:
+#   'ocp3.6', 'ocp3.7', 'ocp3.9', 'ocp3.10' or 'ocp3.11'. The criterion is
+#   to have 'yedit' module enabled. Which is enabled in any of those envs.
+---
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  run_once: yes
+  tasks:
+  - name: Read and validate config file
+    validate_vms_provisioning_config:
+      path: "{{ config_filepath }}"
+    register: config_output
+  - name: Save config to a var
+    set_fact:
+      config: "{{ config_output.config }}"
+      glusterfs_cfg: "{{
+        config_output.config.vmware.vm_parameters.glusterfs }}"
+  - name: DEBUG. Print parsed config file data
+    debug:
+      msg: "{{ config }}"
+
+  # Make sure we have reference to the provisioned VMs
+  - name: Add master nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_masters
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.masters.names }}"
+    when:
+    - "'dt_masters' not in groups"
+  - name: Add compute nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_nodes
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.nodes.names }}"
+    when:
+    - "'dt_nodes' not in groups"
+
+- hosts: dt_masters
+  gather_facts: no
+  run_once: yes
+  tasks:
+  - name: Calculate total amount of system and storage disks on Gluster nodes
+    set_fact:
+      gluster_sys_disks_amount: "{{
+        (hostvars['localhost'].glusterfs_cfg.system_disks_gb|length|int) }}"
+      gluster_stor_disks_amount: "{{
+        (hostvars['localhost'].glusterfs_cfg.storage_disks_gb|length|int) }}"
+  - name: Calculate letters of storage disks on Gluster nodes
+    set_fact:
+      storage_disks_letters: "{{
+        'abcdefghijklmnopqrstuvwxyz'[
+          (gluster_sys_disks_amount | int):(
+            (gluster_sys_disks_amount | int) +
+            (gluster_stor_disks_amount | int))] | list
+      }}"
+
+  - name: Read full hostname of the master node
+    shell: "hostname -f"
+    register: master_hostname_raw
+  - name: Init vars
+    set_fact:
+      master_hostname: "{{ master_hostname_raw.stdout.strip() }}"
+      master_ip: "{{ hostvars.keys()[0] }}"
+      output_filepath: "{{
+        hostvars['localhost'].config.common.output_tests_config_file }}"
+      additional_devices_list: []
+
+  - name: Read namespace and name of the Heketi deployment config
+    shell: oc get dc --all-namespaces | grep heketi | awk '{ print $1 " "$2 }'
+    register: heketi_namespace_dcname_raw
+  - name: Save namespace name in a separate var
+    set_fact:
+      heketi_namespace: "{{
+        heketi_namespace_dcname_raw.stdout.strip().split()[0].strip() }}"
+  - name: Read Heketi svc name
+    shell: "oc get svc -n {{ heketi_namespace
+      }} | grep -e heketi | grep -v heketi-db | awk '{ print $1}'"
+    register: heketi_svc_name_raw
+  - name: Read Heketi service IP address
+    shell: "oc get svc {{ heketi_svc_name_raw.stdout.strip()
+      }} -n {{ heketi_namespace
+      }} -o=custom-columns=:.spec.clusterIP --no-headers"
+    register: heketi_ip_raw
+  - name: Read Heketi admin's secret
+    shell: oc get dc -n {{ heketi_namespace }} {{
+      heketi_namespace_dcname_raw.stdout.strip().split()[1].strip()
+      }} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==
+        "HEKETI_ADMIN_KEY")].value}'
+    register: heketi_admin_secret_raw
+  - name: Save Heketi admin secret to a var
+    set_fact:
+      heketi_admin_secret: "{{ heketi_admin_secret_raw.stdout.strip() }}"
+  - name: Read Gluster nodes addresses
+    shell: "heketi-cli --server=http://{{
+        heketi_ip_raw.stdout.strip() }}:8080 --user=admin --secret={{
+      heketi_admin_secret }} topology info --json |
+        python -c \"from __future__ import print_function; import sys, json;
+        topology = json.loads(sys.stdin.readlines()[0]);
+        ips = [(n['hostnames']['manage'][0], n['hostnames']['storage'][0])
+               for n in topology['clusters'][0]['nodes']];
+        [print(ip[0], ip[1]) for ip in ips]\""
+    register: gluster_nodes_addresses_raw
+  - name: Read Gluster nodes devices
+    shell: "heketi-cli --server=http://{{
+        heketi_ip_raw.stdout.strip() }}:8080 --user=admin --secret={{
+      heketi_admin_secret }} topology info --json |
+        python -c \"from __future__ import print_function; import sys, json;
+        topology = json.loads(sys.stdin.readlines()[0]);
+
+        devs = [(n['hostnames']['manage'][0],
+                 n['devices'][0]['name'][:-1],
+                 ' '.join([d['name'][-1] for d in n['devices']]))
+                for n in topology['clusters'][0]['nodes']];
+        [print(d[0], d[1], d[2]) for d in devs]\""
+    # hostname storage_device_prefix storage_device_letters
+    register: gluster_devices_raw
+  - name: Process gluster devices data and save it to a var
+    set_fact:
+      gluster_devices_data: "{{ gluster_devices_data | default({}) | combine(
+        {item.split(' ')[0]: (
+          storage_disks_letters | difference(item.split(' ')[2:])) |
+            map('regex_replace', '(.*)', item.split(' ')[1] + '\\1') | list }
+      ) }}"
+    with_items: "{{ gluster_devices_raw.stdout_lines }}"
+  # gluster_devices_raw.stdout_lines[0].split(' ')[1] -> prefix
+  - name: Process gluster data and save it to a var
+    set_fact:
+      gluster_servers_data: "{{ gluster_servers_data | default({}) | combine(
+        {item.split(' ')[1]: {
+          'manage': item.split(' ')[0], 'storage': item.split(' ')[1],
+          'additional_devices': gluster_devices_data[item.split(' ')[0]],
+        }}
+      )}}"
+    with_items: "{{ gluster_nodes_addresses_raw.stdout_lines }}"
+
+  - name: Save all the calculated data to the tests config file
+    delegate_to: localhost
+    connection: local
+    yedit:
+      src: "{{ output_filepath }}"
+      state: present
+      backup: false
+      edits:
+      - key: common
+        value:
+          stop_on_first_failure: false
+      - key: gluster_servers
+        value: "{{ gluster_servers_data }}"
+      - key: ocp_servers.client
+        value: "{{ {master_ip: {'hostname': master_hostname}} }}"
+      - key: ocp_servers.master
+        value: "{{ {master_ip: {'hostname': master_hostname}} }}"
+      - key: ocp_servers.nodes
+        value: {}
+      - key: openshift.storage_project_name
+        value: "{{ heketi_namespace }}"
+      - key: openshift.dynamic_provisioning.storage_classes.block_storage_class
+        value:
+          chapauthenabled: "true"
+          hacount: "3"
+          provisioner: "gluster.org/glusterblock"
+          restsecretnamespace: "{{ heketi_namespace }}"
+          resturl: "http://{{ master_ip }}:8080"
+          restuser: "admin"
+          volumenameprefix: "autotests-block"
+      - key: openshift.dynamic_provisioning.storage_classes.file_storage_class
+        value:
+          provisioner: "kubernetes.io/glusterfs"
+          resturl: "http://{{ master_ip }}:8080"
+          restuser: "admin"
+          secretnamespace: "{{ heketi_namespace }}"
+          volumenameprefix: "autotests-file"
+      - key: openshift.heketi_config
+        value:
+          heketi_cli_key: "{{ heketi_admin_secret }}"
+          heketi_cli_user: "admin"
+          heketi_client_node: "{{ master_ip }}"
+          heketi_dc_name: "heketi-{{ heketi_namespace }}"
+          heketi_server_url: "http://{{ master_ip }}:8080"
+          heketi_service_name: "heketi-{{ heketi_namespace }}"

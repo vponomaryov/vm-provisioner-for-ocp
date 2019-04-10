@@ -1,0 +1,251 @@
+# Expected vars:
+#
+# - 'config_filepath' - required. It is expected to be provided and must
+# store filepath for the config file.
+#
+# Command to run only this playbook using control playbook:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     control_playbook.yaml \
+#     -e config_filepath=/path/to/the/config.yaml \
+#     --tags node_configure
+#
+# Command to run this playbook directly:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     2_configure_nodes.yaml \
+#     -e config_filepath=/path/to/the/config.yaml
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  tasks:
+
+  - name: Validate 'ocp_playbooks' var
+    import_role:
+      name: validate_ocp_playbooks_var
+    vars:
+      fail_if_no_paybooks: no
+
+  # Validate config file
+  - name: Read and validate config file
+    validate_vms_provisioning_config:
+      path: "{{ config_filepath }}"
+    register: config_output
+  - name: Save config to a var
+    set_fact:
+      config: "{{ config_output.config }}"
+  - name: Save shortcut to one of the config vars
+    set_fact:
+      cfg_upstream: "{{ config.vm.repo.upstream }}"
+      cfg_downstream_repos: "{{
+        config.vm.repo.downstream.repositories_to_enable }}"
+  - name: DEBUG. Print parsed config file data
+    debug:
+      msg: "{{ config }}"
+
+  # Make sure we have reference to the provisioned VMs
+  - name: Add master nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_masters
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.masters.names }}"
+    when:
+    - "'dt_masters' not in groups"
+  - name: Add compute nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_nodes
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.nodes.names }}"
+    when:
+    - "'dt_nodes' not in groups"
+  - name: Add glusterfs nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_glusterfs
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.glusterfs.names }}"
+    when:
+    - "'dt_glusterfs' not in groups"
+  - name: Add glusterfs_registry nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_glusterfs_registry
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.glusterfs_registry.names }}"
+    when:
+    - "'dt_glusterfs_registry' not in groups"
+
+# Calculate repo vars for all the OCP nodes
+- hosts: dt_masters
+  gather_facts: no
+  tasks:
+  - name: Define set of vars for master nodes
+    set_fact:
+      hostvar_repositories_to_enable: "{{
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.all | union(
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.masters) | unique
+      }}"
+      hostvar_repo_list: "{{
+        hostvars['localhost'].cfg_downstream_repos.all | union(
+        hostvars['localhost'].cfg_downstream_repos.masters)
+      }}"
+      hostvar_uninstall_packages_list: "{{
+        hostvars['localhost'].config.vm.uninstall_packages.all | union(
+        hostvars['localhost'].config.vm.uninstall_packages.masters) | unique
+      }}"
+      hostvar_install_packages_list: "{{
+        hostvars['localhost'].config.vm.install_packages.all | union(
+        hostvars['localhost'].config.vm.install_packages.masters) | unique
+      }}"
+
+- hosts: dt_nodes
+  gather_facts: no
+  tasks:
+  - name: Define set of vars for compute nodes
+    set_fact:
+      hostvar_repositories_to_enable: "{{
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.all | union(
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.nodes) | unique
+      }}"
+      hostvar_repo_list: "{{
+        hostvars['localhost'].cfg_downstream_repos.all | union(
+        hostvars['localhost'].cfg_downstream_repos.nodes)
+      }}"
+      hostvar_uninstall_packages_list: "{{
+        hostvars['localhost'].config.vm.uninstall_packages.all | union(
+        hostvars['localhost'].config.vm.uninstall_packages.nodes) | unique
+      }}"
+      hostvar_install_packages_list: "{{
+        hostvars['localhost'].config.vm.install_packages.all | union(
+        hostvars['localhost'].config.vm.install_packages.nodes) | unique
+      }}"
+
+- hosts: dt_glusterfs
+  gather_facts: no
+  tasks:
+  - name: Define set of vars for glusterfs nodes
+    set_fact:
+      hostvar_repositories_to_enable: "{{
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.all | union(
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.glusterfs) | unique
+      }}"
+      hostvar_repo_list: "{{
+        hostvars['localhost'].cfg_downstream_repos.all | union(
+        hostvars['localhost'].cfg_downstream_repos.glusterfs)
+      }}"
+      hostvar_uninstall_packages_list: "{{
+        hostvars['localhost'].config.vm.uninstall_packages.all | union(
+        hostvars['localhost'].config.vm.uninstall_packages.glusterfs) | unique
+      }}"
+      hostvar_install_packages_list: "{{
+        hostvars['localhost'].config.vm.install_packages.all | union(
+        hostvars['localhost'].config.vm.install_packages.glusterfs) | unique
+      }}"
+
+- hosts: dt_glusterfs_registry
+  gather_facts: no
+  tasks:
+  - name: Define set of vars for glusterfs_registry nodes
+    set_fact:
+      hostvar_repositories_to_enable: "{{
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.all | union(
+        hostvars['localhost'].cfg_upstream.repositories_to_enable.glusterfs_registry) | unique
+      }}"
+      hostvar_repo_list: "{{
+        hostvars['localhost'].cfg_downstream_repos.all | union(
+        hostvars['localhost'].cfg_downstream_repos.glusterfs_registry)
+      }}"
+      hostvar_uninstall_packages_list: "{{
+        hostvars['localhost'].config.vm.uninstall_packages.all | union(
+        hostvars['localhost'].config.vm.uninstall_packages.glusterfs_registry) | unique
+      }}"
+      hostvar_install_packages_list: "{{
+        hostvars['localhost'].config.vm.install_packages.all | union(
+        hostvars['localhost'].config.vm.install_packages.glusterfs_registry) | unique
+      }}"
+
+# Downstream repositories
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - name: repos-downstream
+    when: "not hostvars['localhost'].config.vm.repo.downstream.skip"
+  vars:
+    repo_list: "{{ hostvar_repo_list }}"
+
+# Upstream repositories
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - role: repos-upstream
+    when: "not hostvars['localhost'].config.vm.repo.upstream.skip"
+  vars:
+    subscription_server: "{{ hostvars['localhost'].cfg_upstream.subscription_server }}"
+    subscription_user: "{{ hostvars['localhost'].cfg_upstream.subscription_user }}"
+    subscription_pass: "{{ hostvars['localhost'].cfg_upstream.subscription_pass }}"
+    subscription_pool: "{{ hostvars['localhost'].cfg_upstream.subscription_pool }}"
+    repositories_to_enable: "{{ hostvar_repositories_to_enable }}"
+
+# Yum update and reboot
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  roles:
+  - name: yum-update-and-reboot
+    when: "config.vm.yum['update'] | bool"
+  vars:
+    hostnames: "{{ (
+      (groups.get('dt_masters', []) | map('extract', hostvars, ['ansible_host']) |
+         select(\"defined\") | list) +
+      (groups.get('dt_nodes', []) | map('extract', hostvars, ['ansible_host']) |
+         select(\"defined\") | list) +
+      (groups.get('dt_glusterfs', []) | map('extract', hostvars, ['ansible_host']) |
+         select(\"defined\") | list) +
+      (groups.get('dt_glusterfs_registry', []) | map('extract', hostvars, ['ansible_host']) |
+         select(\"defined\") | list)
+    ) | unique or (
+      groups.get('dt_masters', []) + groups.get('dt_nodes', []) +
+      groups.get('dt_glusterfs', []) +
+      groups.get('dt_glusterfs_registry', [])) | unique }}"
+    reboot_after_yum_update: "{{ config.vm.yum.reboot_after_update | bool }}"
+    sleep_after_reboot_sec: "{{
+      config.vm.yum.sleep_after_reboot_sec | default(60)}}"
+
+# Packages removal and installation
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - role: install-packages
+  vars:
+    uninstall_packages_list: "{{ hostvar_uninstall_packages_list }}"
+    install_packages_list: "{{ hostvar_install_packages_list }}"
+
+# Setup and installation plugins
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - role: setup-common-packages
+    when: "hostvars['localhost'].config.vm.setup_and_configuration.setup_common_packages"
+  - role: setup-ntp
+    when: "hostvars['localhost'].config.vm.setup_and_configuration.setup_ntp"
+  - role: setup-vmware-tools
+    when: "hostvars['localhost'].config.vm.setup_and_configuration.setup_vmware_tools"
+
+- hosts: dt_glusterfs
+  gather_facts: no
+  roles:
+  - role: setup-standalone-glusterfs
+    when:
+    - "hostvars['localhost'].config.vm.setup_and_configuration.setup_standalone_glusterfs"
+
+- hosts: dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - role: setup-standalone-glusterfs
+    when:
+    - "hostvars['localhost'].config.vm.setup_and_configuration.setup_standalone_glusterfs_registry"

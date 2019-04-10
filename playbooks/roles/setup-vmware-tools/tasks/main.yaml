@@ -1,0 +1,13 @@
+---
+- name: Install 'open-vm-tools' and other required packages for VMWare guest
+  import_role:
+    name: install-packages
+  vars:
+    install_packages_list:
+    - open-vm-tools
+
+- name: Make sure 'vmtoolsd' service is enabled and running
+  service:
+    name: vmtoolsd
+    state: started
+    enabled: yes

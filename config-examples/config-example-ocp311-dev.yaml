@@ -1,0 +1,126 @@
+---
+vmware:
+  host: foo-host
+  username: foo-user
+  password: foo-password
+
+  datacenter: FOO-DATACENTER-NAME
+  cluster: FOO-CLUSTER-NAME
+  resource_pool: foo_resource_pool
+  folder: foo_folder
+  datastore: foo-datastore-name
+
+  vm_network: "VM Network"
+  vm_templates:
+  - vm-template-copy1
+  - vm-template-copy2
+  - vm-template-copy3
+
+  vm_parameters:
+    masters:
+      names:
+      - ocp311-dev-master-0
+      num_cpus: 1
+      ram_mb: 16384
+      system_disks_gb: [150]
+      system_disks_type: thin
+    nodes:
+      names:
+      - ocp311-dev-compute-1
+      - ocp311-dev-compute-2
+      num_cpus: 2
+      ram_mb: 32768
+      system_disks_gb: [130]
+      system_disks_type: thin
+    glusterfs:
+      names:
+      - ocp311-dev-storage-1
+      - ocp311-dev-storage-2
+      - ocp311-dev-storage-3
+      num_cpus: 1
+      ram_mb: 16384
+      system_disks_gb: [130]
+      system_disks_type: thin
+      storage_disks_gb: [10, 20, 10]
+      storage_disks_type: thin
+    glusterfs_registry:
+      names:
+      - ocp311-dev-storage-registry-1
+      - ocp311-dev-storage-registry-2
+      - ocp311-dev-storage-registry-3
+      num_cpus: 1
+      ram_mb: 16384
+      system_disks_gb: [130]
+      system_disks_type: thin
+      storage_disks_gb: [10, 20, 10]
+      storage_disks_type: thin
+vm:
+  repo:
+    upstream:
+      skip: yes
+      subscription_server: subscription.foo.bar--can-be-empty-if-skipped
+      subscription_user: foo@bar.quuz--can-be-empty-if-skipped
+      subscription_pass: FooPassword--can-be-empty-if-skipped
+      subscription_pool: FooUser--can-be-empty-if-skipped
+      repositories_to_enable:
+        all:
+        - rhel-7-server-rpms
+        - rhel-7-server-extras-rpms
+        - rhel-7-fast-datapath-rpms
+        - rhel-7-server-ose-3.11-rpms
+        masters:
+        - rh-gluster-3-for-rhel-7-server-rpms
+        nodes: []
+        glusterfs:
+        glusterfs_registry:
+    downstream:
+      skip: no
+      repositories_to_enable:
+        all:
+        - name: 'downstream-fake-repo-common-for-all-nodes'
+          url: 'http://quuz.zuuq/x86_64/os/'
+          cost: 1000
+        masters: []
+        nodes:
+        - name: 'downstream-fake-repo-for-compute-nodes'
+          url: 'http://quuz.zuuq/x86_64/os/'
+          cost: 990
+        glusterfs:
+        - name: 'downstream-fake-repo-for-glusterfs-nodes-1'
+          url: 'http://foo.oof/x86_64/os/'
+          cost: 990
+        glusterfs_registry:
+  yum:
+    update: yes
+    reboot_after_update: yes
+    sleep_after_reboot_sec: 30
+  uninstall_packages:
+    all:
+    - fake-package-1
+    - fake-package-2
+    masters:
+    nodes: []
+    glusterfs: []
+    glusterfs_registry: []
+  install_packages:
+    all:
+    - "docker==1.12.6"
+    - sos
+    masters:
+    nodes: []
+    glusterfs: []
+    glusterfs_registry: []
+  setup_and_configuration:
+    setup_common_packages: yes
+    setup_ntp: yes
+    setup_vmware_tools: yes
+    setup_standalone_glusterfs: no
+    setup_standalone_glusterfs_registry: no
+ocp_update:
+  heketi:
+    install_client_on_masters: yes
+#    client_package_url: 'Want to have upstream version? Then do not define it'
+    add_public_ip_address: yes
+common:
+  output_tests_config_file: ../tests_config.yaml
+  output_cluster_info_file: ../cluster_info.yaml

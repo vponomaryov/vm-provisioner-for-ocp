@@ -1,0 +1,247 @@
+# Expected vars:
+#
+# - 'config_filepath' - required. It is expected to be provided and must
+# store filepath for the config file.
+#
+# Command to run only this playbook using control playbook:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     control_playbook.yaml \
+#     -e config_filepath=/path/to/the/config.yaml \
+#     --tags node_provision
+#
+# Command to run this playbook directly:
+#
+# $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
+#     1_provision_nodes.yaml \
+#     -e config_filepath=/path/to/the/config.yaml
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  run_once: yes
+  vars:
+    ocp_nodes: {}
+  tasks:
+
+  - name: Validate 'ocp_playbooks' var
+    import_role:
+      name: validate_ocp_playbooks_var
+    vars:
+      fail_if_no_paybooks: no
+
+  # Validate config file
+  - name: Read and validate config file
+    validate_vms_provisioning_config:
+      path: "{{ config_filepath }}"
+      check_groups: ['common', 'vmware']
+    register: config_output
+  - name:
+    set_fact:
+      config: "{{ config_output.config }}"
+  - name: DEBUG. Print parsed config file data
+    debug:
+      msg: "{{ config }}"
+
+  # Calculate data
+  - name: Calculate data for master nodes
+    set_fact:
+      ocp_nodes: "{{ ocp_nodes | default({}) | combine({
+        item.0: {
+          'group': 'masters',
+          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length) % (
+            config.vmware.vm_templates | length)],
+          'num_cpus': config.vmware.vm_parameters.masters.num_cpus,
+          'ram_mb': config.vmware.vm_parameters.masters.ram_mb,
+          'disks': ((ocp_nodes|default({}))[item.0] | default({'disks': []}))['disks'] + [{
+            'size_gb': item.1,
+            'type': config.vmware.vm_parameters.masters.system_disks_type,
+            'datastore': config.vmware.datastore,
+          }]
+        }
+      }, recursive=True) }}"
+    with_nested:
+    - "{{ config.vmware.vm_parameters.masters.names }}"
+    - "{{ config.vmware.vm_parameters.masters.system_disks_gb }}"
+    when: config.vmware.vm_parameters.masters.names
+
+  - name: Calculate data for compute nodes
+    set_fact:
+      ocp_nodes: "{{ ocp_nodes | default({}) | combine({
+        item.0: {
+          'group': 'nodes',
+          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length) % (
+            config.vmware.vm_templates | length)],
+          'num_cpus': config.vmware.vm_parameters.nodes.num_cpus,
+          'ram_mb': config.vmware.vm_parameters.nodes.ram_mb,
+          'disks': ((ocp_nodes|default({}))[item.0] | default({'disks': []}))['disks'] + [{
+            'size_gb': item.1,
+            'type': config.vmware.vm_parameters.nodes.system_disks_type,
+            'datastore': config.vmware.datastore,
+          }]
+        }
+      }, recursive=True) }}"
+    with_nested:
+    - "{{ config.vmware.vm_parameters.nodes.names }}"
+    - "{{ config.vmware.vm_parameters.nodes.system_disks_gb }}"
+    when: config.vmware.vm_parameters.nodes.names
+
+  - name: Calculate data for glusterfs nodes
+    set_fact:
+      ocp_nodes: "{{ ocp_nodes | default({}) | combine({
+        item.0: {
+          'group': 'glusterfs',
+          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length) % (
+            config.vmware.vm_templates | length)],
+          'num_cpus': config.vmware.vm_parameters.glusterfs.num_cpus,
+          'ram_mb': config.vmware.vm_parameters.glusterfs.ram_mb,
+          'disks': ((ocp_nodes|default({}))[item.0] | default({'disks': []}))['disks'] + [{
+            'size_gb': item.1,
+            'type': (
+              (( ((ocp_nodes|default({}))[item.0] | default({'disks': []}))['disks'] | length < (
+                  config.vmware.vm_parameters.glusterfs.system_disks_gb | length) ) | ternary(
+                config.vmware.vm_parameters.glusterfs.system_disks_type,
+                config.vmware.vm_parameters.glusterfs.storage_disks_type))
+            ),
+            'datastore': config.vmware.datastore,
+          }]
+        }
+      }, recursive=True) }}"
+    with_nested:
+    - "{{ config.vmware.vm_parameters.glusterfs.names }}"
+    - "{{ config.vmware.vm_parameters.glusterfs.system_disks_gb +
+          config.vmware.vm_parameters.glusterfs.storage_disks_gb}}"
+    when: config.vmware.vm_parameters.glusterfs.names
+
+  - name: Calculate data for glusterfs_registry nodes
+    set_fact:
+      ocp_nodes: "{{ ocp_nodes | default({}) | combine({
+        item.0: {
+          'group': 'glusterfs_registry',
+          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length) % (
+            config.vmware.vm_templates | length)],
+          'num_cpus': config.vmware.vm_parameters.glusterfs_registry.num_cpus,
+          'ram_mb': config.vmware.vm_parameters.glusterfs_registry.ram_mb,
+          'disks': ((ocp_nodes|default({}))[item.0] | default({'disks': []}))['disks'] + [{
+            'size_gb': item.1,
+            'type': (
+              (( ((ocp_nodes|default({}))[item.0] | default({'disks': []}))['disks'] | length < (
+                  config.vmware.vm_parameters.glusterfs_registry.system_disks_gb | length) ) | ternary(
+                config.vmware.vm_parameters.glusterfs_registry.system_disks_type,
+                config.vmware.vm_parameters.glusterfs_registry.storage_disks_type))
+            ),
+            'datastore': config.vmware.datastore,
+          }]
+        }
+      }, recursive=True) }}"
+    with_nested:
+    - "{{ config.vmware.vm_parameters.glusterfs_registry.names }}"
+    - "{{ config.vmware.vm_parameters.glusterfs_registry.system_disks_gb +
+          config.vmware.vm_parameters.glusterfs_registry.storage_disks_gb}}"
+    when: config.vmware.vm_parameters.glusterfs_registry.names
+
+  # Create VMs using calculated data
+  - name: Create all the requested VMs
+    vmware_guest:
+      hostname: "{{ config.vmware.host }}"
+      username: "{{ config.vmware.username }}"
+      password: "{{ config.vmware.password }}"
+      validate_certs: False
+      name: "{{ item.key }}"
+      cluster: "{{ config.vmware.cluster}}"
+      datacenter: "{{ config.vmware.datacenter }}"
+      resource_pool: "{{ config.vmware.resource_pool }}"
+      template: "{{ item.value.template }}"
+      state: poweredon
+      wait_for_ip_address: true
+      folder: "/{{ config.vmware.folder }}"
+      annotation: "{{ item.key }}"
+      disk: "{{ item.value.disks }}"
+      hardware:
+        num_cpus: "{{ item.value.num_cpus }}"
+        memory_mb: "{{ item.value.ram_mb }}"
+      networks: "[{'name': '{{ config.vmware.vm_network }}', 'type': 'dhcp' }]"
+      customization:
+        hostname: "{{ item.key }}"
+    with_dict: "{{ ocp_nodes }}"
+    async: "{{ 6 * 600 }}"
+    poll: 0
+    register: async_vms_creation
+  
+  - name: Check async status of all the VMs
+    async_status:
+      jid: "{{ async_result_item.ansible_job_id }}"
+    with_items: "{{ async_vms_creation.results }}"
+    loop_control:
+      loop_var: "async_result_item"
+    register: async_poll_results
+    until: async_poll_results.finished
+    retries: "{{ 6 * 100 }}"
+  
+  - name: Read info of newly created VMs
+    vmware_guest_tools_wait:
+      hostname: "{{ config.vmware.host }}"
+      username: "{{ config.vmware.username }}"
+      password: "{{ config.vmware.password }}"
+      folder: "/{{ config.vmware.folder }}"
+      validate_certs: False
+      uuid: "{{ item.instance.hw_product_uuid }}"
+    with_items: "{{ async_poll_results.results }}"
+    register: facts
+  
+  - name: Map node names and their IP addresses
+    set_fact:
+      hostnames_ip_mapping: "{{ hostnames_ip_mapping | default({}) | combine(
+        {item.instance.hw_name: item.instance.hw_eth0.ipaddresses|ipv4|first},
+        recursive=True
+      ) }}"
+    with_items: "{{ facts.results }}"
+
+  - name: Update routing on the localhost
+    import_role:
+      name: add-routing-info-to-etc-hosts
+    vars:
+      hostnames_ip_mapping: "{{ hostnames_ip_mapping }}"
+
+  # Add references to the just provisioned VMs
+  - name: Add master nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_masters
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.masters.names }}"
+    when:
+    - "'dt_masters' not in groups"
+  - name: Add compute nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_nodes
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.nodes.names }}"
+    when:
+    - "'dt_nodes' not in groups"
+  - name: Add glusterfs nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_glusterfs
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.glusterfs.names }}"
+    when:
+    - "'dt_glusterfs' not in groups"
+  - name: Add glusterfs_registry nodes if not added yet
+    add_host:
+      name: "{{ item }}"
+      groups: dt_glusterfs_registry
+      ansible_user: root
+    with_items: "{{ config.vmware.vm_parameters.glusterfs_registry.names }}"
+    when:
+    - "'dt_glusterfs_registry' not in groups"
+
+- name: Update all the OCP nodes with routing info about each other
+  hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  roles:
+  - add-routing-info-to-dnsmasq
+  - add-routing-info-to-etc-hosts
+  vars:
+    hostnames_ip_mapping: "{{ hostvars['localhost'].hostnames_ip_mapping }}"
