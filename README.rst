@@ -47,6 +47,38 @@ VMWare requirements
 
 - Enough computing resources for all the VMs which should be provisioned.
 
+-------------------
+Playbooks structure
+-------------------
+
+.. code-block:: console
+
+    ======= Playbook № 1 - Provision nodes ===================
+    - provision VMs
+    - configure routing to each other
+    ======= Playbook № 2 - Configure nodes ===================
+    - enable/disable upstream repos
+    - enable/disable downstream repos
+    - run yum update if needed
+    - reboot nodes after yum update if needed
+    - remove undesired packages
+    - install desired packages
+    ======= Playbook № 3 - Run openshift-ansible playbooks ===
+    - run openshift-ansible playbooks with your inventory file
+    ======= Playbook № 4 - Update OCP ========================
+    - perform updates on the just deployed ocp cluster
+    ======= Playbook № 5 - Generate config for tests =========
+    - generate config file for automated test cases
+    ======= Playbook № 6 - Gather info about cluster =========
+    - gather cluster info
+    ==========================================================
+
+    ======= Extra playbook - gather logs =====================
+    - gather whole set of logs
+    ======= Extra playbook - cleanup cluster =================
+    - cleanup cluster
+    ==========================================================
+
 -----
 Usage
 -----
