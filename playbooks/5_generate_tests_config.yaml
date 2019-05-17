@@ -82,12 +82,12 @@
       }}"
 
   - name: Read full hostname of the master node
-    shell: "hostname -f"
-    register: master_hostname_raw
+    shell: 'echo "$(hostname -f) $(hostname -i)"'
+    register: master_hostname_and_ip_raw
   - name: Init vars
     set_fact:
-      master_hostname: "{{ master_hostname_raw.stdout.strip() }}"
-      master_ip: "{{ hostvars.keys()[0] }}"
+      master_hostname: "{{ master_hostname_and_ip_raw.stdout.split(' ')[0] }}"
+      master_ip: "{{ master_hostname_and_ip_raw.stdout.split(' ')[1] }}"
       output_filepath: "{{
         hostvars['localhost'].config.common.output_tests_config_file }}"
       additional_devices_list: []
@@ -99,13 +99,17 @@
     set_fact:
       heketi_namespace: "{{
         heketi_namespace_dcname_raw.stdout.strip().split()[0].strip() }}"
+      heketi_dc_name: "{{
+        heketi_namespace_dcname_raw.stdout.strip().split()[1].strip() }}"
   - name: Read Heketi svc name
     shell: "oc get svc -n {{ heketi_namespace
       }} | grep -e heketi | grep -v heketi-db | awk '{ print $1}'"
     register: heketi_svc_name_raw
+  - name: Save heketi service name in a separate var
+    set_fact:
+      heketi_svc_name: "{{ heketi_svc_name_raw.stdout.strip() }}"
   - name: Read Heketi service IP address
-    shell: "oc get svc {{ heketi_svc_name_raw.stdout.strip()
-      }} -n {{ heketi_namespace
+    shell: "oc get svc {{ heketi_svc_name }} -n {{ heketi_namespace
       }} -o=custom-columns=:.spec.clusterIP --no-headers"
     register: heketi_ip_raw
   - name: Read Heketi admin's secret
@@ -202,6 +206,6 @@
           heketi_cli_key: "{{ heketi_admin_secret }}"
           heketi_cli_user: "admin"
           heketi_client_node: "{{ master_ip }}"
-          heketi_dc_name: "heketi-{{ heketi_namespace }}"
+          heketi_dc_name: "{{ heketi_dc_name }}"
           heketi_server_url: "http://{{ master_ip }}:8080"
-          heketi_service_name: "heketi-{{ heketi_namespace }}"
+          heketi_service_name: "{{ heketi_svc_name }}"
