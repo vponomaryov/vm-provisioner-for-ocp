@@ -1,0 +1,2 @@
+---
+dnsmasq_config_filepath: "/etc/dnsmasq.d/dt-openshift-cluster-nodes.conf"
