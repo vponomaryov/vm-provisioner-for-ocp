@@ -43,6 +43,12 @@
     debug:
       msg: "{{ config }}"
 
+  - name: Create resource pool and directory if absent
+    import_role:
+      name: create_vmware_resource_pool_and_dir
+    vars:
+      config: "{{ config }}"
+
   # Calculate data
   - name: Calculate data for master nodes
     set_fact:
@@ -148,7 +154,7 @@
       password: "{{ config.vmware.password }}"
       validate_certs: False
       name: "{{ item.key }}"
-      cluster: "{{ config.vmware.cluster}}"
+      cluster: "{{ config.vmware.cluster }}"
       datacenter: "{{ config.vmware.datacenter }}"
       resource_pool: "{{ config.vmware.resource_pool }}"
       template: "{{ item.value.template }}"

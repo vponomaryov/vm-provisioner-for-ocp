@@ -1,0 +1,26 @@
+- name: Fail if 'config' var is not provided
+  fail:
+    msg: "This role requires 'config' to be provided"
+  when: "config is not defined"
+
+- name: Create resource pool on vCenter
+  dt_vmware_resource_pool:
+    hostname: "{{ config.vmware.host }}"
+    username: "{{ config.vmware.username }}"
+    password: "{{ config.vmware.password }}"
+    datacenter: "{{ config.vmware.datacenter }}"
+    cluster: "{{ config.vmware.cluster }}"
+    resource_pool: "{{ config.vmware.resource_pool }}"
+    state: "present"
+    validate_certs: False
+
+- name: Create folder structure on vCenter
+  dt_vcenter_folder:
+    hostname: "{{ config.vmware.host }}"
+    username: "{{ config.vmware.username }}"
+    password: "{{ config.vmware.password }}"
+    datacenter: "{{ config.vmware.datacenter }}"
+    cluster: "{{ config.vmware.cluster }}"
+    folder: "{{ config.vmware.folder }}"
+    state: "present"
+    validate_certs: False
