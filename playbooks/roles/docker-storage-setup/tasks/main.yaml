@@ -1,0 +1,40 @@
+---
+- name: Remove any existing docker-storage config file
+  file:
+    path: "/etc/sysconfig/docker-storage"
+    state: absent
+
+- name: Create the docker-storage config file
+  template:
+    src: "{{ role_path }}/templates/docker-storage-setup-overlayfs.j2"
+    dest: "/etc/sysconfig/docker-storage-setup"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Create the docker-storage-setup config file
+  template:
+    src: "{{ role_path }}/templates/docker-storage-setup-dm.j2"
+    dest: "/etc/sysconfig/docker-storage-setup"
+    owner: root
+    group: root
+    mode: 0644
+
+#- name: Install docker
+#  yum:
+#    name:
+#    - "docker"
+#    state: present
+#  become: yes
+#  become_user: root
+#  retries: 5
+#  delay: 5
+#  register: result
+#  until: result is succeeded
+#
+#- name: Start docker
+#  service:
+#    name: docker
+#    state: started
+#    enabled: yes
+#  ignore_errors: yes

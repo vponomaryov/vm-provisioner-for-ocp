@@ -41,6 +41,7 @@
       cfg_upstream: "{{ config.vm.repo.upstream }}"
       cfg_downstream_repos: "{{
         config.vm.repo.downstream.repositories_to_enable }}"
+      cfg_vm_setup: "{{ config.vm.setup_and_configuration }}"
   - name: DEBUG. Print parsed config file data
     debug:
       msg: "{{ config }}"
@@ -237,16 +238,67 @@
   - role: setup-vmware-tools
     when: "hostvars['localhost'].config.vm.setup_and_configuration.setup_vmware_tools"
 
+# Mount disks if needed
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  tasks:
+  - name: Mount disks if needed
+    include_role:
+      name: mount-disk
+    vars:
+      disk_path: "{{ item.disk_path }}"
+      mount_point: "{{ item.mount_point }}"
+      name_prefix: "{{ item.name_prefix }}"
+      fstype: "{{ item.fstype }}"
+    with_items: "{{ hostvars['localhost'].cfg_vm_setup.mount_disks }}"
+
+# Setup docker storage on master and compute nodes
+- hosts: dt_masters, dt_nodes
+  gather_facts: no
+  tasks:
+  - name: Setup docker storage if required
+    import_role:
+      name: docker-storage-setup
+    vars:
+      disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
+    when: "not hostvars['localhost'].cfg_vm_setup.setup_docker_storage.skip"
+
+# Setup docker storage on glusterfs nodes
+- hosts: dt_glusterfs
+  gather_facts: no
+  tasks:
+  - name: Setup docker storage if required
+    import_role:
+      name: docker-storage-setup
+    vars:
+      disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
+    when:
+    - "not hostvars['localhost'].cfg_vm_setup.setup_docker_storage.skip"
+    - "not hostvars['localhost'].cfg_vm_setup.setup_standalone_glusterfs"
+
+# Setup docker storage on glusterfs_registry nodes
+- hosts: dt_glusterfs_registry
+  gather_facts: no
+  tasks:
+  - name: Setup docker storage if required
+    import_role:
+      name: docker-storage-setup
+    vars:
+      disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
+    when:
+    - "not hostvars['localhost'].cfg_vm_setup.setup_docker_storage.skip"
+    - "not hostvars['localhost'].cfg_vm_setup.setup_standalone_glusterfs_registry"
+
 - hosts: dt_glusterfs
   gather_facts: no
   roles:
   - role: setup-standalone-glusterfs
     when:
-    - "hostvars['localhost'].config.vm.setup_and_configuration.setup_standalone_glusterfs"
+    - "hostvars['localhost'].cfg_vm_setup.setup_standalone_glusterfs"
 
 - hosts: dt_glusterfs_registry
   gather_facts: no
   roles:
   - role: setup-standalone-glusterfs
     when:
-    - "hostvars['localhost'].config.vm.setup_and_configuration.setup_standalone_glusterfs_registry"
+    - "hostvars['localhost'].cfg_vm_setup.setup_standalone_glusterfs_registry"

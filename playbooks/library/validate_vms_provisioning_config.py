@@ -417,12 +417,32 @@ def validate_config_structure(module, config):
                     "setup_common_packages": True,
                     "setup_ntp": True,
                     "setup_vmware_tools": True,
+                    "mount_disks": [],
+                    "setup_docker_storage": {"skip": True, "disk_path": None},
                     "setup_standalone_glusterfs": False,
                     "setup_standalone_glusterfs_registry": False}): {
                 schema.Optional("setup_common_packages",
                                 default=True): bool,
                 schema.Optional("setup_ntp", default=True): bool,
                 schema.Optional("setup_vmware_tools", default=True): bool,
+                schema.Optional("mount_disks", default=[]): schema.Or(
+                    [{
+                        "disk_path": schema.And(
+                            str, lambda s: s.startswith("/dev/")),
+                        "mount_point": schema.And(
+                            str, lambda s: s.startswith("/")),
+                        "name_prefix": schema.And(str, len),
+                        "fstype": schema.And(str, len),
+                    }],
+                    schema.Use(lambda o: ([] if o is None else {}[
+                        "Only 'None' or 'list' objects are allowed"])),
+                ),
+                schema.Optional("setup_docker_storage",
+                                default={"skip": True, "disk_path": None}): {
+                    schema.Optional("skip", default=True): bool,
+                    schema.Optional("disk_path", default=None): (
+                        schema.And(str, len)),
+                },
                 schema.Optional("setup_standalone_glusterfs",
                                 default=False): bool,
                 schema.Optional("setup_standalone_glusterfs_registry",

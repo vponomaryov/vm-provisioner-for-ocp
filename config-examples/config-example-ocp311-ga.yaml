@@ -22,7 +22,7 @@ vmware:
       - ocp311-ga-master-0
       num_cpus: 1
       ram_mb: 16384
-      system_disks_gb: [150]
+      system_disks_gb: [60, 40, 40]
       system_disks_type: thin
     nodes:
       names:
@@ -30,7 +30,7 @@ vmware:
       - ocp311-ga-compute-2
       num_cpus: 2
       ram_mb: 32768
-      system_disks_gb: [130]
+      system_disks_gb: [60, 40, 40]
       system_disks_type: thin
     glusterfs:
       names:
@@ -39,7 +39,7 @@ vmware:
       - ocp311-ga-storage-3
       num_cpus: 1
       ram_mb: 16384
-      system_disks_gb: [130]
+      system_disks_gb: [60, 40, 40]
       system_disks_type: thin
       storage_disks_gb: [10, 20, 10]
       storage_disks_type: thin
@@ -50,7 +50,7 @@ vmware:
       - ocp311-ga-storage-registry-3
       num_cpus: 1
       ram_mb: 16384
-      system_disks_gb: [130]
+      system_disks_gb: [60, 40, 40]
       system_disks_type: thin
       storage_disks_gb: [10, 20, 10]
       storage_disks_type: thin
@@ -115,6 +115,14 @@ vm:
     setup_common_packages: yes
     setup_ntp: yes
     setup_vmware_tools: yes
+    mount_disks:
+    - disk_path: "/dev/sdb"
+      mount_point: "/var"
+      name_prefix: "var"
+      fstype: "xfs"
+    setup_docker_storage:
+      skip: no
+      disk_path: "/dev/sdc"
     setup_standalone_glusterfs: no
     setup_standalone_glusterfs_registry: no
 ocp_update:

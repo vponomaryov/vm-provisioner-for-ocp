@@ -1,0 +1,8 @@
+---
+# docker_dev: "/dev/sd*" - expected to be provided as input var for the role
+docker_vg: "dockervg"
+docker_data_size: "95%VG"
+docker_dm_basesize: "3G"
+docker_storage_driver: "overlay2"
+docker_container_root_lv_name: "dockerlv"
+docker_container_root_lv_mount_path: "/var/lib/docker"
