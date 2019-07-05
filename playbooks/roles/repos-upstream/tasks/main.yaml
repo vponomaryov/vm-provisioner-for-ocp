@@ -1,6 +1,7 @@
 #  Expected vars:
 #
 #  - 'subscription_server' - required. RHSM server as string.
+#  - 'subscription_baseurl' - required. RHSM base url as string.
 #  - 'subscription_user' - required. Username for subscription.
 #  - 'subscription_pass' - required. Password for subscription.
 #  - 'subscription_pool' - required. Pool for subscription, i.e. 'Employee SKU'
@@ -19,6 +20,7 @@
 - name: Register system using Red Hat Subscription Manager
   redhat_subscription:
     server_hostname: "{{ subscription_server }}"
+    rhsm_baseurl: "{{ subscription_baseurl }}"
     username: "{{ subscription_user }}"
     password: "{{ subscription_pass }}"
     pool: "{{ subscription_pool }}"

@@ -59,6 +59,7 @@ vm:
     upstream:
       skip: yes
       subscription_server: subscription.foo.bar--can-be-empty-if-skipped
+      subscription_baseurl: http://cdn.redhat.com/
       subscription_user: foo@bar.quuz--can-be-empty-if-skipped
       subscription_pass: FooPassword--can-be-empty-if-skipped
       subscription_pool: FooUser--can-be-empty-if-skipped

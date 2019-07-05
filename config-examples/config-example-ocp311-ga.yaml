@@ -59,6 +59,7 @@ vm:
     upstream:
       skip: no
       subscription_server: subscription.foo.bar
+      subscription_baseurl: http://cdn.redhat.com/
       subscription_user: foo@bar.quuz
       subscription_pass: FooPassword
       subscription_pool: FooUser

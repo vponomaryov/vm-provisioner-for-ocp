@@ -185,6 +185,7 @@
     when: "not hostvars['localhost'].config.vm.repo.upstream.skip"
   vars:
     subscription_server: "{{ hostvars['localhost'].cfg_upstream.subscription_server }}"
+    subscription_baseurl: "{{ hostvars['localhost'].cfg_upstream.subscription_baseurl }}"
     subscription_user: "{{ hostvars['localhost'].cfg_upstream.subscription_user }}"
     subscription_pass: "{{ hostvars['localhost'].cfg_upstream.subscription_pass }}"
     subscription_pool: "{{ hostvars['localhost'].cfg_upstream.subscription_pool }}"

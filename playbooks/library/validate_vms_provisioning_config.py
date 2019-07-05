@@ -190,6 +190,7 @@ def validate_config_structure(module, config):
                 schema.Optional("upstream",
                                 default={"skip": True,
                                          "subscription_server": "not_set",
+                                         "subscription_baseurl": "not_set",
                                          "subscription_user": "not_set",
                                          "subscription_pass": "not_set",
                                          "subscription_pool": "not_set",
@@ -199,6 +200,9 @@ def validate_config_structure(module, config):
                                              "glusterfs_registry": []}}): {
                     schema.Optional("skip", default=True): bool,
                     schema.Optional("subscription_server",
+                                    default="not_set"): schema.Or(
+                        schema.And(str, len), None),
+                    schema.Optional("subscription_baseurl",
                                     default="not_set"): schema.Or(
                         schema.And(str, len), None),
                     schema.Optional("subscription_user",
