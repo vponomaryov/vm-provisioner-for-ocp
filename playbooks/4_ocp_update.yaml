@@ -84,7 +84,7 @@
     - set_fact:
         master_ipv4: "{{ master_ipv4_raw.stdout_lines[0] }}"
     - name: Read namespace of a Heketi deployment config
-      shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
+      shell: "oc get dc --all-namespaces | grep -e heketi | grep -v registry | awk '{ print $1}'"
       register: heketi_namespace_raw
     - name: Save namespace name in a separate var
       set_fact:
@@ -125,7 +125,7 @@
 
   - block:
     - name: Read namespace of a Heketi deployment config
-      shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
+      shell: "oc get dc --all-namespaces | grep -e heketi | grep -v registry | awk '{ print $1}'"
       register: heketi_namespace_raw
     - name: Get Heketi POD name on master node
       command: "oc get pods -l glusterfs=heketi-storage-pod --no-headers {{ ''
