@@ -14,7 +14,7 @@
     vg: "{{ name_prefix | default(mount_point[1:].replace('/', '_')) }}_vg"
     pvs: "{{ disk_path }}"
 
-- name: Create lvm volume
+- name: Create logical volume (lvm)
   lvol:
     vg: "{{ name_prefix | default(mount_point[1:].replace('/', '_')) }}_vg"
     lv: "{{ name_prefix | default(mount_point[1:].replace('/', '_')) }}_lv"
@@ -28,19 +28,35 @@
     dev: "/dev/{{ name_prefix | default(mount_point[1:].replace('/', '_'))
     }}_vg/{{ name_prefix | default(mount_point[1:].replace('/', '_')) }}_lv"
 
-- name: Create dir if absent
+- name: Create destination and temp dirs if absent
   file:
-    path: "{{ mount_point }}"
+    path: "{{ item }}"
     state: directory
     mode: 0755
+  with_items:
+  - "{{ mount_point }}"
+  - "{{ mount_point[:-1] }}_temp"
 
-- name: Mount newly created partition
+- name: Mount the device to the temp dir
+  mount:
+    name: "{{ mount_point[:-1] }}_temp"
+    src: "/dev/{{ name_prefix | default(mount_point[1:].replace('/', '_'))
+    }}_vg/{{ name_prefix | default(mount_point[1:].replace('/', '_')) }}_lv"
+    fstype: "{{ fstype | default('xfs') }}"
+    state: mounted
+
+- name: Copy data from the original dir if it was existing and had some data
+  shell: "yes | cp -aur {{ mount_point }}/* {{ mount_point[:-1] }}_temp"
+
+- name: Unmount the device from the temp dir
+  mount:
+    path: "{{ mount_point[:-1] }}_temp"
+    state: unmounted
+
+- name: Mount the device to the destination dir 
   mount:
     name: "{{ mount_point }}"
     src: "/dev/{{ name_prefix | default(mount_point[1:].replace('/', '_'))
     }}_vg/{{ name_prefix | default(mount_point[1:].replace('/', '_')) }}_lv"
     fstype: "{{ fstype | default('xfs') }}"
-    state: present
-
-- name: Apply mount changes
-  command: "mount -a"
+    state: mounted
