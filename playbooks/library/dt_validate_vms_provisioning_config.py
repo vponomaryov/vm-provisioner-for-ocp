@@ -8,7 +8,7 @@ ANSIBLE_METADATA = {
 
 DOCUMENTATION = '''
 ---
-module: validate_vms_provisioning_config
+module: dt_validate_vms_provisioning_config
 
 short_description: validates config options for OpenShift deployment tool
 
@@ -35,12 +35,12 @@ author:
 
 EXAMPLES = '''
 - name: Read and validate whole config file
-  validate_vms_provisioning_config:
+  dt_validate_vms_provisioning_config:
     path: "/fake/path/to/config/file.yaml"
   register: config_output
 
 - name: Read and validate part of a config file
-  validate_vms_provisioning_config:
+  dt_validate_vms_provisioning_config:
     path: "/fake/path/to/config/file.yaml"
     check_groups: ['common', 'vms']
   register: config_output

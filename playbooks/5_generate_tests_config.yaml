@@ -32,7 +32,7 @@
   run_once: yes
   tasks:
   - name: Read and validate config file
-    validate_vms_provisioning_config:
+    dt_validate_vms_provisioning_config:
       path: "{{ config_filepath }}"
     register: config_output
   - name: Save config to a var
