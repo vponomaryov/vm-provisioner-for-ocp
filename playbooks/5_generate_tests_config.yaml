@@ -93,7 +93,7 @@
       additional_devices_list: []
 
   - name: Read namespace and name of the Heketi deployment config
-    shell: oc get dc --all-namespaces | grep heketi | awk '{ print $1 " "$2 }'
+    shell: oc get dc --all-namespaces | grep -e heketi | grep -v registry | awk '{ print $1 " "$2 }'
     register: heketi_namespace_dcname_raw
   - name: Save namespace name in a separate var
     set_fact:
