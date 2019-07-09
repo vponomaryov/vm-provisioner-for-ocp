@@ -15,14 +15,17 @@
           to be set as a list of hostnames which should be rebooted."
   when: "(hostnames is not defined) or (hostnames | length < 1)"
 
+# NOTE(vponomar): run yum update 3 times to workaround occasional
+# unavailabilities of files.
 - name: Run yum update command
-  command: "yum update -y"
+  shell: "yum update -y || yum update -y || yum update -y"
   delegate_to: "{{ item }}"
   remote_user: "root"
   with_items: "{{ hostnames }}"
   async: 3600
   poll: 0
   register: async_yum_update
+  warn: no
 
 - name: Check async status of yum update commands
   async_status:
@@ -36,6 +39,7 @@
   until: async_poll_results.finished
   retries: 360
   delay: 10
+  warn: no
 
 - block:
   - name: Reboot machine to apply all major changes to the system if exist
