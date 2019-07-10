@@ -249,5 +249,6 @@
   roles:
   - add-routing-info-to-dnsmasq
   - add-routing-info-to-etc-hosts
+  - extend-root-volume
   vars:
     hostnames_ip_mapping: "{{ hostvars['localhost'].hostnames_ip_mapping }}"

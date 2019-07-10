@@ -1,0 +1,72 @@
+# No vars are expected to be provided
+---
+- name: Get VG name for 'root' LV
+  shell: "lvs | grep -v 'tp_' | grep -v 'brick_' | grep ' root ' | awk '{print $2}'"
+  register: vg_raw
+
+- name: Get PV name(s) for VG
+  shell: "pvs | grep -e '{{ vg_raw.stdout.strip() }}' | awk '{print $1}'"
+  register: pvs_raw
+
+- name: Get partition information
+  parted:
+    device: "{{ pvs_raw.stdout.split('\n')[-1].strip()[:-1] }}"
+  register: partinfo
+
+- name: DEBUG. Print info about the disk and it's partitions used for root dir
+  debug:
+    msg: "{{ partinfo }}"
+
+- name: Calculate summary partitions size
+  set_fact:
+    dt_partinions_summary_size_gb: "{{
+      (dt_partinions_summary_size_gb | default(0) | int) + (item.size | int)}}"
+  with_items: "{{ partinfo.partitions }}"
+
+- name: Calculate unallocated disk size
+  set_fact:
+    dt_unallocated_disk_space_gb: "{{
+      (((partinfo.disk.size | int) - (dt_partinions_summary_size_gb | int)) /
+        1024**2) | int }}"
+
+- name: DEBUG. Print unallocated disk space calculated in Gb
+  debug:
+    var: dt_unallocated_disk_space_gb
+
+- block:
+  - name: Create new partition which will be used for extending the root VG
+    parted:
+      part_start: "{{ partinfo.partitions[1].end }}KiB"
+      device: "{{ partinfo.disk.dev }}"
+      number: "{{ partinfo.partitions[-1].num + 1 }}"
+      flags: [lvm]
+      state: present
+  
+  - name: Probe kernel about partition table changes
+    command: partprobe
+  
+  - name: Extend volume group
+    lvg:
+      vg: "{{ vg_raw.stdout.strip() }}"
+      pvs: "{{ partinfo.disk.dev }}{{
+               partinfo.partitions[-1].num }},{{ partinfo.disk.dev }}{{
+               partinfo.partitions[-1].num + 1 }}"
+  
+  - name: Extend the root logical volume
+    lvol:
+      vg: "{{ vg_raw.stdout.strip() }}"
+      lv: "root"
+      size: "+100%FREE"
+      shrink: no
+  
+  # Following is required for Ansible 2.4-
+  - name: Get fstype of the root dir and device mapper name instance
+    shell: "mount | grep '\\/ '"
+    register: root_mount_raw
+
+  - name: Extend the root filesystem
+    filesystem:
+      fstype: "{{ root_mount_raw.stdout.strip().split(' ')[4] }}"
+      dev: "{{ root_mount_raw.stdout.strip().split(' ')[0] }}"
+      resizefs: yes
+  when: "(dt_unallocated_disk_space_gb | int) > 2"
