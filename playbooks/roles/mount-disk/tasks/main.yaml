@@ -46,7 +46,8 @@
     state: mounted
 
 - name: Copy data from the original dir if it was existing and had some data
-  shell: "yes | cp -aur {{ mount_point }}/* {{ mount_point[:-1] }}_temp"
+  shell: "yes | cp -ur --preserve=all --no-dereference {{
+          mount_point }}/* {{ mount_point[:-1] }}_temp"
 
 - name: Unmount the device from the temp dir
   mount:

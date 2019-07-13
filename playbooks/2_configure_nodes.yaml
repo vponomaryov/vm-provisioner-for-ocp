@@ -169,6 +169,20 @@
         hostvars['localhost'].config.vm.install_packages.glusterfs_registry) | unique
       }}"
 
+# Mount disks if needed
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  tasks:
+  - name: Mount disks if needed
+    include_role:
+      name: mount-disk
+    vars:
+      disk_path: "{{ item.disk_path }}"
+      mount_point: "{{ item.mount_point }}"
+      name_prefix: "{{ item.name_prefix }}"
+      fstype: "{{ item.fstype }}"
+    with_items: "{{ hostvars['localhost'].cfg_vm_setup.mount_disks }}"
+
 # Downstream repositories
 - hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
   gather_facts: no
@@ -237,20 +251,6 @@
     when: "hostvars['localhost'].config.vm.setup_and_configuration.setup_ntp"
   - role: setup-vmware-tools
     when: "hostvars['localhost'].config.vm.setup_and_configuration.setup_vmware_tools"
-
-# Mount disks if needed
-- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
-  gather_facts: no
-  tasks:
-  - name: Mount disks if needed
-    include_role:
-      name: mount-disk
-    vars:
-      disk_path: "{{ item.disk_path }}"
-      mount_point: "{{ item.mount_point }}"
-      name_prefix: "{{ item.name_prefix }}"
-      fstype: "{{ item.fstype }}"
-    with_items: "{{ hostvars['localhost'].cfg_vm_setup.mount_disks }}"
 
 # Setup docker storage on master and compute nodes
 - hosts: dt_masters, dt_nodes
