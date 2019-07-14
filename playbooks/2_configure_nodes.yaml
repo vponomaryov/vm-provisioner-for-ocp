@@ -260,7 +260,7 @@
     import_role:
       name: docker-storage-setup
     vars:
-      disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
+      dt_disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
     when: "not hostvars['localhost'].cfg_vm_setup.setup_docker_storage.skip"
 
 # Setup docker storage on glusterfs nodes
@@ -271,7 +271,7 @@
     import_role:
       name: docker-storage-setup
     vars:
-      disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
+      dt_disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
     when:
     - "not hostvars['localhost'].cfg_vm_setup.setup_docker_storage.skip"
     - "not hostvars['localhost'].cfg_vm_setup.setup_standalone_glusterfs"
@@ -284,7 +284,7 @@
     import_role:
       name: docker-storage-setup
     vars:
-      disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
+      dt_disk_path: "{{ hostvars['localhost'].cfg_vm_setup.setup_docker_storage.disk_path }}"
     when:
     - "not hostvars['localhost'].cfg_vm_setup.setup_docker_storage.skip"
     - "not hostvars['localhost'].cfg_vm_setup.setup_standalone_glusterfs_registry"
