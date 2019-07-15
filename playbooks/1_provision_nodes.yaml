@@ -97,7 +97,7 @@
       ocp_nodes: "{{ ocp_nodes | default({}) | combine({
         item.0: {
           'group': 'glusterfs',
-          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length - 1) % (
+          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length) % (
             config.vmware.vm_templates | length)],
           'num_cpus': config.vmware.vm_parameters.glusterfs.num_cpus,
           'ram_mb': config.vmware.vm_parameters.glusterfs.ram_mb,
@@ -124,7 +124,7 @@
       ocp_nodes: "{{ ocp_nodes | default({}) | combine({
         item.0: {
           'group': 'glusterfs_registry',
-          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length - 1) % (
+          'template': config.vmware.vm_templates[(ocp_nodes|default({})|length) % (
             config.vmware.vm_templates | length)],
           'num_cpus': config.vmware.vm_parameters.glusterfs_registry.num_cpus,
           'ram_mb': config.vmware.vm_parameters.glusterfs_registry.ram_mb,
