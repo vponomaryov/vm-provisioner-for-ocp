@@ -454,7 +454,10 @@ def validate_config_structure(module, config):
                 schema.Optional("install_client_on_masters",
                                 default=True): bool,
                 schema.Optional("client_package_url", default=None): (
-                    schema.And(str, len)),
+                    schema.Use(lambda o: (
+                        o.strip() if o and len(o.strip()) > 0 else None
+                    ))
+                ),
                 schema.Optional("add_public_ip_address", default=True): bool,
             },
         },
