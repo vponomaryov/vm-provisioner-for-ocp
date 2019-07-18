@@ -107,9 +107,7 @@
   tasks:
   - set_fact:
       upd_info: "{{hostvars['localhost'].config.ocp_update }}"
-
-  - name: Install Heketi client from URL if such specified
-    block:
+  - block:
     - name: Remove existing heketi client from master node if present
       package:
         name: "heketi-client"
@@ -118,32 +116,37 @@
       delay: 5
       register: result
       until: result is succeeded
+    when:
+    - "upd_info.heketi.install_client_on_masters | bool"
+
+  - block:
     - command: "yum install -y {{ upd_info.heketi.client_package_url }}"
     when:
     - "upd_info.heketi.install_client_on_masters | bool"
     - "upd_info.heketi.client_package_url is not none"
 
+  - name: Read namespace of a Heketi deployment config
+    shell: "oc get dc --all-namespaces | grep -e heketi | grep -v registry | awk '{ print $1}'"
+    register: heketi_namespace_raw
+  - name: Get Heketi POD name on master node
+    command: "oc get pods -l glusterfs=heketi-storage-pod --no-headers {{ ''
+      }}-o=custom-columns=:.metadata.name --namespace {{
+      heketi_namespace_raw.stdout }}"
+    register: heketi_pod_name
+  - name: DEBUG. print heketi pod name output
+    debug:
+      msg: "{{ heketi_pod_name }}"
+  - name: Read heketi-client package version from Heketi POD
+    shell: "oc exec --namespace {{ heketi_namespace_raw.stdout
+      }} {{ heketi_pod_name.stdout_lines[0]
+      }} -- rpm -q heketi-client --queryformat{{ ''
+      }} '%{version}-%{release}\n' | cut -d '.' -f 1,2,3"
+    register: heketi_client_version
+  - name: DEBUG. Print heketi client version output
+    debug:
+      msg: "{{ heketi_client_version }}"
+
   - block:
-    - name: Read namespace of a Heketi deployment config
-      shell: "oc get dc --all-namespaces | grep -e heketi | grep -v registry | awk '{ print $1}'"
-      register: heketi_namespace_raw
-    - name: Get Heketi POD name on master node
-      command: "oc get pods -l glusterfs=heketi-storage-pod --no-headers {{ ''
-        }}-o=custom-columns=:.metadata.name --namespace {{
-        heketi_namespace_raw.stdout }}"
-      register: heketi_pod_name
-    - name: DEBUG. print heketi pod name output
-      debug:
-        msg: "{{ heketi_pod_name }}"
-    - name: Read heketi-client package version from Heketi POD
-      shell: "oc exec --namespace {{ heketi_namespace_raw.stdout
-        }} {{ heketi_pod_name.stdout_lines[0]
-        }} -- rpm -q heketi-client --queryformat{{ ''
-        }} '%{version}-%{release}\n' | cut -d '.' -f 1,2,3"
-      register: heketi_client_version
-    - name: DEBUG. Print heketi client version output
-      debug:
-        msg: "{{ heketi_client_version }}"
     - name: Remove existing heketi client from master node if present
       package:
         name: "heketi-client"
@@ -164,3 +167,30 @@
     when:
     - "upd_info.heketi.install_client_on_masters | bool"
     - "upd_info.heketi.client_package_url is none"
+
+  - block:
+    # Check that heketi client is of proper version on the master node
+    - name: Get the heketi client version from master node
+      shell: "rpm -q heketi-client --queryformat '%{version}-%{release}\n'"
+      register: master_heketi_client_version_raw
+    - name: Save master_heketi_client_version_raw data to a var
+      set_fact:
+        master_heketi_client_version: "{{
+          master_heketi_client_version_raw.stdout_lines[
+            0].strip().split('.')[0:3] | join('.') }}"
+    - name: Compare Heketi client versions from master node and Heketi pod
+      fail:
+        msg:
+        - "Heketi client on the heketi pod has following version: {{
+           heketi_client_version.stdout_lines[0].strip() }}"
+        - "But Heketi client version on master node is following: {{
+           master_heketi_client_version }}"
+      when:
+      - "(master_heketi_client_version | replace('-','.')) is version_compare(
+           version=(
+             heketi_client_version.stdout_lines[0].strip() | replace('-','.')),
+           operator='lt',
+           strict=False
+         )"
+    when:
+    - "upd_info.heketi.install_client_on_masters | bool"
