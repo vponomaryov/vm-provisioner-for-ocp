@@ -93,10 +93,16 @@
       shell: "oc get svc -n {{ heketi_namespace
         }} | grep -e heketi | grep -v heketi-db | awk '{ print $1}'"
       register: heketi_svc_name_raw
+    - name: Get existing value for the externalIPs field
+      shell: "oc get svc -n {{ heketi_namespace
+        }} {{ heketi_svc_name_raw.stdout.strip()
+        }} -o custom-columns=:.spec.externalIPs[*] --no-headers"
+      register: existing_external_ips
     - name: Set external IP for the Heketi service
       command: "oc patch svc {{ heketi_svc_name_raw.stdout.strip()
         }} --namespace {{ heketi_namespace
         }} -p '{\"spec\":{\"externalIPs\":[\"{{ master_ipv4 }}\"]}}'"
+      when: "existing_external_ips.stdout.strip() != master_ipv4"
     when:
     - "hostvars['localhost'].config.ocp_update.heketi.add_public_ip_address | bool"
 
@@ -147,14 +153,6 @@
       msg: "{{ heketi_client_version }}"
 
   - block:
-    - name: Remove existing heketi client from master node if present
-      package:
-        name: "heketi-client"
-        state: absent
-      retries: 5
-      delay: 5
-      register: result
-      until: result is succeeded
     - name: Install heketi client on master node
       package:
         name: "heketi-client-{{
