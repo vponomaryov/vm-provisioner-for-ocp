@@ -45,14 +45,20 @@
     fstype: "{{ fstype | default('xfs') }}"
     state: mounted
 
+- name: Detect second+ run to avoid copying to itself
+  shell: "diff {{ mount_point }} {{ mount_point[:-1]
+          }}_temp && echo 'skip_cp' || echo 'run_cp'"
+  register: diff_output
+
 - name: Copy data from the original dir if it was existing and had some data
   shell: "yes | cp -ur --preserve=all --no-dereference {{
           mount_point }}/* {{ mount_point[:-1] }}_temp"
+  when: "'run_cp' in diff_output.stdout_lines"
 
 - name: Unmount the device from the temp dir
   mount:
     path: "{{ mount_point[:-1] }}_temp"
-    state: unmounted
+    state: absent
 
 - name: Mount the device to the destination dir 
   mount:
