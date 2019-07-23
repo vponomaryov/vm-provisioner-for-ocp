@@ -243,6 +243,16 @@
     when:
     - "'dt_glusterfs_registry' not in groups"
 
+  - name: Wait for SSH availability of newly provisioned VMs
+    wait_for:
+      host: "{{ item.value }}"
+      port: 22
+      delay: 0
+      timeout: 420
+      connect_timeout: 5
+      state: started
+    with_dict: "{{ hostnames_ip_mapping }}"
+
 - name: Update all the OCP nodes with routing info about each other
   hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
   gather_facts: no
