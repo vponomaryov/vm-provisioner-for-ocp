@@ -59,7 +59,13 @@ from ansible.module_utils.basic import AnsibleModule
 
 
 def validate_config_structure(module, config):
+    def non_empty_string_without_spaces(input_string):
+        if ' ' in input_string or not input_string.strip():
+            {}['Repository name should not be empty and should not contain '
+               '"space" symbols.']
+        return input_string
 
+    node_types = ("all", "masters", "nodes", "glusterfs", "glusterfs_registry")
     vm_repo_downstream_default = {
         "skip": True,
         "repositories_to_enable": {
@@ -70,13 +76,6 @@ def validate_config_structure(module, config):
     common_default = {
         "output_tests_config_file": "../tests_config.yaml",
         "output_cluster_info_file": "../cluster_info.yaml",
-    }
-    ocp_update_default = {
-        "heketi": {
-            "install_client_on_masters": True,
-            "client_package_url": None,
-            "add_public_ip_address": True,
-        },
     }
     config_schema_dict = {
         "vmware": {
@@ -90,114 +89,34 @@ def validate_config_structure(module, config):
             "datastore": schema.And(str, len),
             "vm_network": schema.And(str, len),
             "vm_templates": [schema.And(str, len)],
-            "vm_parameters": {
-                "masters": {
-                    schema.Optional("num_cpus", default=1): schema.And(
-                        int, lambda i: i in range(1, 17)),
-                    schema.Optional("ram_mb", default=16384): schema.And(
-                        int, lambda i: 4096 <= i <= 65535),
-                    schema.Optional("names", default=[]): schema.Or(
-                        schema.And(
-                            [schema.And(str, len)], lambda l: len(l) <= 3),
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("system_disks_gb",
-                                    default=[150]): schema.And(
-                        [schema.And(int, lambda i: 0 < i)],
-                        lambda l: len(l) <= 4),
-                    schema.Optional("system_disks_type", default='thin'): (
-                        schema.And(str, len))
-                },
-                "nodes": {
-                    schema.Optional("num_cpus", default=1): schema.And(
-                        int, lambda i: i in range(1, 17)),
-                    schema.Optional("ram_mb", default=16384): schema.And(
-                        int, lambda i: 4096 <= i <= 65535),
-                    schema.Optional("names", default=[]): schema.Or(
-                        schema.And(
-                            [schema.And(str, len)], lambda l: len(l) <= 3),
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("system_disks_gb",
-                                    default=[150]): schema.And(
-                        [schema.And(int, lambda i: 0 < i)],
-                        lambda l: len(l) <= 4),
-                    schema.Optional("system_disks_type", default='thin'): (
-                        schema.And(str, len))
-                },
-                "glusterfs": {
-                    schema.Optional("num_cpus", default=1): schema.And(
-                        int, lambda i: i in range(1, 17)),
-                    schema.Optional("ram_mb", default=16384): schema.And(
-                        int, lambda i: 4096 <= i <= 65535),
-                    schema.Optional("names", default=[]): schema.Or(
-                        schema.And(
-                            [schema.And(str, len)], lambda l: len(l) <= 9),
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("system_disks_gb",
-                                    default=[150]): schema.And(
-                        [schema.And(int, lambda i: 0 < i)],
-                        lambda l: len(l) <= 4),
-                    schema.Optional("system_disks_type", default='thin'): (
-                        schema.And(str, len)),
-                    schema.Optional("storage_disks_gb",
-                                    default=[100, 600, 100]): schema.And(
-                        [schema.And(int, lambda i: 0 < i)],
-                        lambda l: len(l) <= 7),
-                    schema.Optional("storage_disks_type", default='thin'): (
-                        schema.And(str, len))
-                },
-                "glusterfs_registry": {
-                    schema.Optional("num_cpus", default=1): schema.And(
-                        int, lambda i: i in range(1, 17)),
-                    schema.Optional("ram_mb", default=16384): schema.And(
-                        int, lambda i: 4096 <= i <= 65535),
-                    schema.Optional("names", default=[]): schema.Or(
-                        schema.And(
-                            [schema.And(str, len)], lambda l: len(l) <= 9),
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("system_disks_gb",
-                                    default=[150]): schema.And(
-                        [schema.And(int, lambda i: 0 < i)],
-                        lambda l: len(l) <= 4),
-                    schema.Optional("system_disks_type", default='thin'): (
-                        schema.And(str, len)),
-                    schema.Optional("storage_disks_gb",
-                                    default=[100, 600, 100]): schema.And(
-                        [schema.And(int, lambda i: 0 < i)],
-                        lambda l: len(l) <= 7),
-                    schema.Optional("storage_disks_type", default='thin'): (
-                        schema.And(str, len))
-                },
-            },
+            "vm_parameters": {node_type: {
+                schema.Optional("num_cpus", default=1): schema.And(
+                    int, lambda i: i in range(1, 17)),
+                schema.Optional("ram_mb", default=16384): schema.And(
+                    int, lambda i: 4096 <= i <= 65535),
+                schema.Optional("names", default=[]): schema.Or(
+                    schema.Use(lambda o: (
+                        [] if (o is None or o == []) else {}[
+                            "Only 'None' or 'list' objects are allowed"]
+                    )),
+                    schema.And([schema.And(str, len)], lambda l: len(l) <= 9),
+                ),
+                schema.Optional("system_disks_gb", default=[150]): schema.And(
+                    [schema.And(int, lambda i: 0 < i)],
+                    lambda l: len(l) <= 4),
+                schema.Optional("system_disks_type", default='thin'): (
+                    schema.And(str, len)),
+                schema.Optional("storage_disks_gb", default=(
+                    [100, 600, 100] if 'gluster' in node_type else []
+                )): schema.And(
+                    [schema.And(int, lambda i: 0 < i)], lambda l: len(l) <= 7),
+                schema.Optional("storage_disks_type", default='thin'): (
+                    schema.And(str, len))
+            } for node_type in node_types if node_type != "all"}
         },
         "vm": {
             "repo": {
-                schema.Optional("upstream",
-                                default={"skip": True,
-                                         "subscription_server": "not_set",
-                                         "subscription_baseurl": "not_set",
-                                         "subscription_user": "not_set",
-                                         "subscription_pass": "not_set",
-                                         "subscription_pool": "not_set",
-                                         "repositories_to_enable": {
-                                             "all": [], "masters": [],
-                                             "nodes": [], "glusterfs": [],
-                                             "glusterfs_registry": []}}): {
+                "upstream": {
                     schema.Optional("skip", default=True): bool,
                     schema.Optional("subscription_server",
                                     default="not_set"): schema.Or(
@@ -215,212 +134,80 @@ def validate_config_structure(module, config):
                                     default="not_set"): schema.Or(
                         schema.And(str, len), None),
                     schema.Optional("repositories_to_enable",
-                                    default={"all": [],
-                                             "masters": [],
-                                             "nodes": [],
-                                             "glusterfs": []}): schema.Or({
-                        "all": schema.Or(
-                            [schema.And(str, len)],
+                                    default={"all": [], "masters": [],
+                                             "nodes": [], "glusterfs": [],
+                                             "glusterfs_registry": []}): schema.Or({
+                        schema.Optional(node_type, default=[]): schema.Or(
                             schema.Use(lambda o: ([] if o is None else {}[
                                 "Only 'None' or 'list' objects are allowed"]
-                            ))
-                        ),
-                        "masters": schema.Or(
-                            [schema.And(str, len)],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                            ))
-                        ),
-                        "nodes": schema.Or(
-                            [schema.And(str, len)],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                            ))
-                        ),
-                        "glusterfs": schema.Or(
-                            [schema.And(str, len)],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                            ))
-                        ),
-                        "glusterfs_registry": schema.Or(
-                            [schema.And(str, len)],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"]
-                            ))
-                        ),
+                            )), [schema.And(str, len)],
+                        ) for node_type in node_types
                     }, None),
                 },
-                schema.Optional("downstream",
-                                default=vm_repo_downstream_default): schema.Or({
+                "downstream": schema.Or({
                     schema.Optional("skip", default=True): bool,
                     schema.Optional("repositories_to_enable",
                                     default=vm_repo_downstream_default[
-                                        "repositories_to_enable"]): schema.Or({
-                        "all": schema.Or(
-                            [{
-                                "name": schema.And(str, len),
-                                "url": schema.And(str, lambda s: 'http' in s),
-                                "cost": schema.And(int, lambda i: 0 < i),
-                            }],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"])),
-                        ),
-                        "masters": schema.Or(
-                            [{
-                                "name": schema.And(str, len),
-                                "url": schema.And(str, lambda s: 'http' in s),
-                                "cost": schema.And(int, lambda i: 0 < i),
-                            }],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"])),
-                        ),
-                        "nodes": schema.Or(
-                            [{
-                                "name": schema.And(str, len),
-                                "url": schema.And(str, lambda s: 'http' in s),
-                                "cost": schema.And(int, lambda i: 0 < i),
-                            }],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"])),
-                        ),
-                        "glusterfs": schema.Or(
-                            [{
-                                "name": schema.And(str, len),
-                                "url": schema.And(str, lambda s: 'http' in s),
-                                "cost": schema.And(int, lambda i: 0 < i),
-                            }],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"])),
-                        ),
-                        "glusterfs_registry": schema.Or(
-                            [{
-                                "name": schema.And(str, len),
-                                "url": schema.And(str, lambda s: 'http' in s),
-                                "cost": schema.And(int, lambda i: 0 < i),
-                            }],
-                            schema.Use(lambda o: ([] if o is None else {}[
-                                "Only 'None' or 'list' objects are allowed"])),
-                        ),
-                    }, schema.Use(lambda o: ([] if o is None else {}[
-                        "Only 'None' or 'dict' objects are allowed"])),
+                                        "repositories_to_enable"]): schema.Or(
+                        schema.Use(lambda o: (
+                            vm_repo_downstream_default["repositories_to_enable"]
+                            if (o is None or o == {}) else {}[
+                                "Only 'None' or 'dict' objects are allowed"])),
+                        {
+                            schema.Optional(node_type, default=[]): schema.Or(
+                                schema.Use(lambda o: ([] if (o is None or o == []) else {}[
+                                    "Only 'None' or 'list' objects are allowed"])),
+                                [{
+                                    "name": schema.And(
+                                        str, non_empty_string_without_spaces),
+                                    "url": schema.And(str, lambda s: 'http' in s),
+                                    "cost": schema.And(int, lambda i: 0 < i),
+                                }],
+                            ) for node_type in node_types
+                        }
                     ),
-                }, schema.Use(lambda o: (
-                    vm_repo_downstream_default if o is None else {}[
-                    "Only 'None' or 'dict' objects are allowed"])),
-                ),
+                }),
             },
             "yum": {
                 schema.Optional("update", default=True): bool,
                 schema.Optional("reboot_after_update", default=True): bool,
                 schema.Optional("sleep_after_reboot_sec", default=60): int,
             },
-            schema.Optional("uninstall_packages",
-                            default={"all": [], "masters": [], "nodes": [],
-                                     "glusterfs": [],
-                                     "glusterfs_registry": []}): schema.Or(
+            "uninstall_packages": schema.Or(
+                schema.Use(lambda o: (
+                    {"all": [], "masters": [], "nodes": [], "glusterfs": [],
+                     "glusterfs_registry": []}
+                    if (o is None or o == {}) else {}[
+                        "Only 'None' or 'dict' objects are allowed"]
+                )),
                 {
-                    schema.Optional("all", default=[]): schema.Or(
+                    schema.Optional(node_type, default=[]): schema.Or(
                         [schema.And(str, len)],
                         schema.Use(lambda o: (
                             [] if o is None else {}[
                                 "Only 'None' or 'str' objects are allowed"]
                         ))
-                    ),
-                    schema.Optional("masters", default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("nodes", default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("glusterfs", default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("glusterfs_registry",
-                                    default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
+                    ) for node_type in node_types
                 },
+            ),
+            "install_packages": schema.Or(
                 schema.Use(lambda o: (
                     {"all": [], "masters": [], "nodes": [], "glusterfs": [],
                      "glusterfs_registry": []}
                     if o is None else {}[
                         "Only 'None' or 'dict' objects are allowed"]
-                ))
-            ),
-            schema.Optional("install_packages",
-                            default={"all": [], "masters": [], "nodes": [],
-                                     "glusterfs": [],
-                                     "glusterfs_registry": []}): schema.Or(
+                )),
                 {
-                    schema.Optional("all", default=[]): schema.Or(
+                    schema.Optional(node_type, default=[]): schema.Or(
                         [schema.And(str, len)],
                         schema.Use(lambda o: (
                             [] if o is None else {}[
                                 "Only 'None' or 'str' objects are allowed"]
                         ))
-                    ),
-                    schema.Optional("masters", default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("nodes", default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("glusterfs", default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
-                    schema.Optional("glusterfs_registry",
-                                    default=[]): schema.Or(
-                        [schema.And(str, len)],
-                        schema.Use(lambda o: (
-                            [] if o is None else {}[
-                                "Only 'None' or 'str' objects are allowed"]
-                        ))
-                    ),
+                    ) for node_type in node_types
                 },
-                schema.Use(lambda o: (
-                    {"all": [], "masters": [], "nodes": [], "glusterfs": [],
-                     "glusterfs_registry": []}
-                    if o is None else {}[
-                        "Only 'None' or 'dict' objects are allowed"]
-                ))
             ),
-            schema.Optional("setup_and_configuration", default={
-                    "setup_common_packages": True,
-                    "setup_ntp": True,
-                    "setup_vmware_tools": True,
-                    "mount_disks": [],
-                    "setup_docker_storage": {"skip": True, "disk_path": None},
-                    "setup_standalone_glusterfs": False,
-                    "setup_standalone_glusterfs_registry": False}): {
+            "setup_and_configuration": {
                 schema.Optional("setup_common_packages",
                                 default=True): bool,
                 schema.Optional("setup_ntp", default=True): bool,
@@ -449,10 +236,9 @@ def validate_config_structure(module, config):
                                 default=False): bool,
             },
         },
-        schema.Optional("ocp_update", default=ocp_update_default): {
-            schema.Optional("heketi", default=ocp_update_default["heketi"]): {
-                schema.Optional("install_client_on_masters",
-                                default=True): bool,
+        "ocp_update": {
+            "heketi": {
+                schema.Optional("install_client_on_masters", default=True): bool,
                 schema.Optional("client_package_url", default=None): (
                     schema.Use(lambda o: (
                         o.strip() if o and len(o.strip()) > 0 else None
@@ -461,26 +247,20 @@ def validate_config_structure(module, config):
                 schema.Optional("add_public_ip_address", default=True): bool,
             },
         },
-        schema.Optional("common", default=common_default): schema.Or(
-            {
-                schema.Optional("output_tests_config_file",
-                                default=(common_default[
-                                    "output_tests_config_file"])): (
-                    schema.And(str, len)),
-                schema.Optional("output_cluster_info_file",
-                                default=(common_default[
-                                    "output_cluster_info_file"])): (
-                    schema.And(str, len)),
-            },
+        "common": schema.Or(
             schema.Use(lambda o: (
-                {
-                    "output_tests_config_file": (
-                        common_default["output_tests_config_file"]),
-                    "output_cluster_info_file": (
-                        common_default["output_cluster_info_file"]),
-                }
-                if o is None else {}[
-                    "Only 'dict' and 'None' values are allowed"]))
+                {"output_tests_config_file": common_default["output_tests_config_file"],
+                 "output_cluster_info_file": common_default["output_cluster_info_file"]}
+                if (o is None or o == {}) else {}[
+                    "Only 'dict' and 'None' values are allowed"])
+            ),
+            {schema.Optional("output_tests_config_file",
+                             default=(common_default["output_tests_config_file"])): (
+                 schema.And(str, len)),
+             schema.Optional("output_cluster_info_file",
+                             default=(common_default["output_cluster_info_file"])): (
+                 schema.And(str, len)),
+            },
         ),
     }
     if module.params["check_groups"]:
