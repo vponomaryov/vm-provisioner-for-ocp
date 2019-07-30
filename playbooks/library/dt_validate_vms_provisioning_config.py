@@ -73,6 +73,16 @@ def validate_config_structure(module, config):
             "glusterfs_registry": [],
         },
     }
+    cluster_validation_default = dict(
+        {"skip": True}.items() +
+        {pod_type: {
+            "redhat_storage_release": None,
+            "redhat_release": None,
+            "packages": [],
+            "validate_package_signatures": True,
+        } for pod_type in ("heketi_pod", "gluster_pod",
+                           "gluster_block_provisioner_pod")}.items()
+    )
     common_default = {
         "output_tests_config_file": "../tests_config.yaml",
         "output_cluster_info_file": "../cluster_info.yaml",
@@ -247,6 +257,46 @@ def validate_config_structure(module, config):
                 schema.Optional("add_public_ip_address", default=True): bool,
             },
         },
+        schema.Optional("cluster_validation",
+                        default=cluster_validation_default): schema.Or(
+            schema.Use(lambda o: (
+                cluster_validation_default
+                if not o else {}["Data is provided. Switch to filter."]
+            )),
+            dict(
+                {schema.Optional(
+                    "skip",
+                    default=cluster_validation_default["skip"]): bool}.items() +
+                {schema.Optional(pod_type, default=cluster_validation_default[
+                        pod_type]): schema.Or(
+                    schema.Use(lambda o: (
+                        cluster_validation_default[pod_type]
+                        if not o else {}["Data is provided. Skipping."]
+                    )),
+                    {schema.Optional("redhat_storage_release", default=None): (
+                         schema.Use(lambda o: (
+                             o.strip() if o and len(o.strip()) > 0 else None
+                         ))
+                     ),
+                     schema.Optional("redhat_release", default=None): (
+                         schema.Use(lambda o: (
+                             o.strip() if o and len(o.strip()) > 0 else None
+                         ))
+                     ),
+                     schema.Optional("packages", default=[]): schema.Or(
+                         [schema.And(str, len)],
+                         schema.Use(lambda o: (
+                             [] if o is None else {}[
+                                 "Only 'None' or 'list' of 'str'ings are allowed"]
+                         ))
+                     ),
+                     schema.Optional("validate_package_signatures",
+                                     default=True): bool,
+                    }
+                ) for pod_type in ("heketi_pod", "gluster_pod",
+                                   "gluster_block_provisioner_pod")}.items()
+            ),
+        ),
         "common": schema.Or(
             schema.Use(lambda o: (
                 {"output_tests_config_file": common_default["output_tests_config_file"],

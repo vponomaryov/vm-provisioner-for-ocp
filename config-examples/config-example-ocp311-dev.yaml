@@ -130,6 +130,29 @@ ocp_update:
     install_client_on_masters: yes
 #    client_package_url: 'Want to have upstream version? Then do not define it'
     add_public_ip_address: yes
+cluster_validation:
+  skip: yes
+  heketi_pod:
+    redhat_storage_release: "Red Hat Gluster Volume Manager 3.11.3"
+    redhat_release: "Red Hat Enterprise Linux Server release 7.6"
+    packages:
+    - heketi-8.0.0-12
+    - heketi-client-8.0.0-12
+    validate_package_signatures: yes
+  gluster_pod:
+    redhat_storage_release: "3.4.4"
+    redhat_release: "Red Hat Enterprise Linux Server release 7.6"
+    packages:
+    - glusterfs-3.12.2-47
+    - gluster-block-0.2.1-32
+    - tcmu-runner-1.2.0-29
+    - lvm2-2.02.180-10
+    validate_package_signatures: yes
+  gluster_block_provisioner_pod:
+    redhat_storage_release: "Red Hat Gluster Block Provisioner 3.11.3"
+    redhat_release: "Red Hat Enterprise Linux Server release 7.6"
+    packages:
+    validate_package_signatures: yes
 common:
   output_tests_config_file: ../tests_config.yaml
   output_cluster_info_file: ../cluster_info.yaml

@@ -1,0 +1,127 @@
+# Expected vars:
+#
+# - varname_with_results - optional. String. Define here varname to be used
+#   for storing validation results. Useful when we run this role in a loop
+#   using 'with_items' feature.
+# - pod_name - optional. If provided then command will run on the pod. In such
+#   case 'hostname' role should run on the master node.
+# - pod_namespace - optional. Recommended to be provide when 'pod_name'
+#   is provided. By default it equals to the 'default' namespace.
+# - packages - optional. List of packages to be validated.
+#   Example: packages=['python-2.7.5-80','heketi-8.0.0-12']
+# - validate_package_signatures - optional. Boolean. Defines whether
+#   it is need or not to perform package validation checks.
+# - redhat_storage_release - optional. String. String or part of string that
+#   sohuld exist in the '/etc/redhat-storage-release' file.
+# - redhat_release - optional. String. String or part of string that
+#   should exist in the '/etc/redhat-release' file.
+---
+- set_fact:
+    dt_pod_prefix: "{{ '' if (pod_name|default('') == '') else
+      'oc exec ' + pod_name + ' -n ' + (pod_namespace|default('default')) + ' -- ' }}"
+    dt_mismatches: {}
+    dt_package_mismatches: {}
+    dt_signature_failures: []
+    
+- block:
+  - name: VALIDATION. Get storage release version
+    shell: "{{ dt_pod_prefix }}cat /etc/redhat-storage-release ||
+      echo 'Failed to read Red Hat storage release info'"
+    register: storage_release_version
+  - name: VALIDATION. Validate RedHat Storage release version
+    set_fact:
+      dt_mismatches: "{{ dt_mismatches | default({}) | combine({
+        'redhat_storage_release': {
+          'expected': redhat_storage_release.strip(),
+          'actual': storage_release_version.stdout,
+        }
+      }) }}"
+    when: "redhat_storage_release.strip() not in storage_release_version.stdout"
+  when:
+  - "not (redhat_storage_release.strip() == '')"
+- block:
+  - name: VALIDATION. Get RedHat release version
+    shell: "{{ dt_pod_prefix }}cat /etc/redhat-release ||
+      echo 'Failed to read Red Hat release info'"
+    register: redhat_release_version
+  - name: VALIDATION. Validate RedHat release version
+    set_fact:
+      dt_mismatches: "{{ dt_mismatches | default({}) | combine({
+        'redhat_release': {
+          'expected': redhat_release.strip(),
+          'actual': redhat_release_version.stdout,
+        }
+      }) }}"
+    when: "redhat_release.strip() not in redhat_release_version.stdout"
+  when:
+  - "not (redhat_release.strip() == '')"
+- block:
+
+  # Validate package versions
+  - name: VALIDATION. Get packages
+    shell: "vers=$({{ dt_pod_prefix }}rpm -qa {{
+      item.split('.')[0].split('-')[:-1] |join('-') if '.' in item else item
+      }} --qf='%{version}-%{release}\n'); vers=${vers%.*}; if [[ $vers == '{{
+      (([item.split('.')[0].split('-')[-1]] + item.split('.')[1:])|join('.'))
+      if '.' in item else 'not_set'
+      }}' ]]; then echo 'equal'; elif [[ $vers != '' ]];
+      then echo $vers; else echo 'absent'; fi"
+    with_items: "{{ packages }}"
+    register: rpms_results
+  - name: VALIDATION. Detect unmatched packages
+    set_fact:
+      dt_package_mismatches: "{{ dt_package_mismatches |default({}) | combine({
+        (item.item.split('.')[0].split('-')[:-1] |join('-')
+        if '.' in item.item else item.item): {
+          'actual': item.stdout,
+          'expected': (
+            (([item.item.split('.')[0].split('-')[-1]] + item.item.split('.')[1:])|join('.'))
+            if '.' in item.item else 'not_set'
+          )
+        }
+      }) }}"
+    with_items: "{{ rpms_results.results }}"
+    when: "item.stdout != 'equal'"
+  - name: VALIDATION. Save info about detected mismathed packages 
+    set_fact:
+      dt_mismatches: "{{ dt_mismatches | default({}) |
+        combine({'packages': dt_package_mismatches | default({})}) }}"
+    when: "(dt_package_mismatches | default({})) != {}"
+
+  # Validate package signatures
+  - name: VALIDATION. Check signatures of the packages
+    shell: "{{ dt_pod_prefix }}rpm -qa {{
+      (item.item.split('.')[0].split('-')[:-1] |join('-')
+      if '.' in item.item else item.item) }} --qf='%{SIGPGP:pgpsig}\n' |
+        grep -e 199e2f91fd431d51 -e FD431D51 -e fd431d51 \
+        -e 45689c882fa658e0 -e 2FA658E0 -e 2fa658e0 || echo ''"
+    with_items: "{{ rpms_results.results }}"
+    register: signatures_check_results
+    when:
+    - "validate_package_signatures | bool"
+    - "item.stdout != 'absent'"
+  - debug:
+      msg: "{{ signatures_check_results }}"
+  - name: VALIDATION. Parse package signatures check results
+    set_fact:
+      dt_signature_failures: "{{ (dt_signature_failures | default([])) + [
+        (item.item.item.split('.')[0].split('-')[:-1] |join('-')
+        if '.' in item.item.item else item.item.item)
+      ] }}"
+    with_items: "{{ signatures_check_results.results }}"
+    when:
+    - "validate_package_signatures | bool"
+    - "item.item.stdout != 'absent' and item.stdout == ''"
+  - name: VALIDATION. Save package signatures check results
+    set_fact:
+      dt_mismatches: "{{ dt_mismatches | default({}) | combine({
+        'packages_with_invalid_signature': (dt_signature_failures |default([]))
+      }) }}"
+    when: "(dt_signature_failures | default([])) != []"
+  - name: VALIDATION. Save validation results to the special var if defined
+    set_fact: "{{ varname_with_results }}={{ dt_mismatches | default({}) }}"
+    when:
+    - "varname_with_results is defined"
+    - "(dt_mismatches | default({})) != {}"
+
+  when: "packages != []"

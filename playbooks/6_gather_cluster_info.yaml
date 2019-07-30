@@ -331,14 +331,18 @@
     - rpcbind
   tasks:
   - block:
-    - name: Get storage release version from Gluster PODs
-      shell: "cat /etc/redhat-storage-release || echo 'Failed to read Red Hat storage release info'"
+    - name: Get RedHat release version from Gluster nodes
+      shell: "cat /etc/redhat-release || echo 'Failed to read Red Hat release info'"
+      register: gluster_redhat_release_version
+    - name: Get storage release version from Gluster nodes
+      shell: "cat /etc/redhat-storage-release ||
+        echo 'Failed to read Red Hat storage release info'"
       register: gluster_storage_release_version
     - name: Get info about packages on Gluster node
       shell: "rpm -qa | grep -e {{ gluster_package_list | join(' -e ')
         }} || echo 'No requested packages found'"
       register: gluster_node_package_list
-    - name: Get info about services on Gluster PODs
+    - name: Get info about services on Gluster nodes
       shell: "systemctl list-units {{
         gluster_service_list | join('.service ') }}.service
         --type=service --all --no-pager --no-legend"
@@ -351,6 +355,8 @@
         edits:
         - key: "04_gluster_nodes__{{ ansible_hostname }}"
           value:
+            RedHat release version: "{{
+              gluster_redhat_release_version.stdout }}"
             Storage release version: "{{
               gluster_storage_release_version.stdout }}"
             List of Packages: "{{ gluster_node_package_list.stdout_lines }}"
@@ -367,3 +373,153 @@
   - name: Print gathered data
     debug:
       msg: "{{ data_file_content.stdout_lines }}"
+
+### VALIDATION ###
+
+# Validate package, system and storage versions on Gluster nodes
+- hosts: dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  pre_tasks:
+  - setup:
+      filter: ansible_hostname
+  tasks:
+  - set_fact:
+      validation_config: "{{
+        hostvars['localhost'].config.cluster_validation.gluster_pod }}"
+  - block:
+    - import_role:
+        name: validate-system
+      vars:
+        pod_name: ""
+        packages: "{{ validation_config.packages }}"
+        validate_package_signatures: "{{
+          validation_config.validate_package_signatures }}"
+        redhat_storage_release: "{{validation_config.redhat_storage_release }}"
+        redhat_release: "{{ validation_config.redhat_release }}"
+    - name: Save results to a var on the master node
+      delegate_to: "{{ groups.dt_masters | first }}"
+      delegate_facts: yes
+      set_fact:
+        dt_gluster_nodes_mismatches: "{{
+          dt_gluster_nodes_mismatches | default({}) | combine({
+            ansible_hostname: dt_mismatches
+          })
+        }}"
+      when: "dt_mismatches != {}"
+    when:
+    - "hostvars['localhost'].standalone_gluster | bool"
+    - "not (hostvars['localhost'].config.cluster_validation.skip|bool)"
+
+- hosts: dt_masters
+  run_once: yes
+  gather_facts: no
+  pre_tasks:
+  - setup:
+      filter: ansible_hostname
+  tasks:
+  - set_fact:
+      heketi_validation_config: "{{
+        hostvars['localhost'].config.cluster_validation.heketi_pod }}"
+      gluster_validation_config: "{{
+        hostvars['localhost'].config.cluster_validation.gluster_pod }}"
+      block_prov_validation_config: "{{
+        hostvars['localhost'].config.cluster_validation.gluster_block_provisioner_pod }}"
+  # Heketi POD
+  - name: Get heketi PODs
+    shell: "oc get pods --all-namespaces -l heketi
+      -o=custom-columns=:.metadata.name,:.metadata.namespace"
+    register: heketi_pods
+  - block:
+    - import_role:
+        name: validate-system
+      vars:
+        pod_name: "{{ (heketi_pods.stdout_lines[1].split(' ') | list)[0] }}"
+        pod_namespace: "{{ (heketi_pods.stdout_lines[1].split(' ') | list)[-1] }}"
+        packages: "{{ heketi_validation_config.packages }}"
+        validate_package_signatures: "{{
+          heketi_validation_config.validate_package_signatures }}"
+        redhat_storage_release: "{{
+          heketi_validation_config.redhat_storage_release }}"
+        redhat_release: "{{ heketi_validation_config.redhat_release }}"
+    - set_fact:
+        dt_heketi_mismatches: "{{ dt_mismatches }}"
+    when:
+    - "((heketi_pods.stdout_lines | join('')).strip() | length) > 0"
+    - "not (hostvars['localhost'].config.cluster_validation.skip|bool)"
+
+  # Gluster block provisioner POD
+  - name: Get gluster block provisioner PODs
+    shell: "oc get pods --no-headers
+      -l deploymentconfig=$(oc get dc --no-headers -l glusterblock
+        -o custom-columns=:.metadata.name)
+      -o=custom-columns=:.metadata.name,:.metadata.namespace"
+    register: block_prov_pods
+  - block:
+    - import_role:
+        name: validate-system
+      vars:
+        pod_name: "{{ (block_prov_pods.stdout_lines[0].split(' ') | list)[0] }}"
+        pod_namespace: "{{
+          (block_prov_pods.stdout_lines[0].split(' ') | list)[-1] }}"
+        packages: "{{ block_prov_validation_config.packages }}"
+        validate_package_signatures: "{{
+          block_prov_validation_config.validate_package_signatures }}"
+        redhat_storage_release: "{{
+          block_prov_validation_config.redhat_storage_release }}"
+        redhat_release: "{{ block_prov_validation_config.redhat_release }}"
+    - set_fact:
+        dt_block_prov_mismatches: "{{ dt_mismatches }}"
+    when:
+    - "((block_prov_pods.stdout_lines | join('')).strip() | length) > 0"
+    - "not (hostvars['localhost'].config.cluster_validation.skip|bool)"
+
+  # Gluster PODs
+  - name: Get list of Gluster PODs
+    shell: "oc get pods --all-namespaces --no-headers -l glusterfs-node
+      -o=custom-columns=:.metadata.name,:.metadata.namespace"
+    register: gluster_pods
+  - block:
+    - include_role:
+        name: validate-system
+      vars:
+        varname_with_results: "dt_mismatches_{{
+          ((item.split(' ') | list)[0]).replace('-', '_') }}"
+        pod_name: "{{ (item.split(' ') | list)[0] }}"
+        pod_namespace: "{{ (item.split(' ') | list)[-1] }}"
+        packages: "{{ gluster_validation_config.packages }}"
+        validate_package_signatures: "{{
+          gluster_validation_config.validate_package_signatures }}"
+        redhat_storage_release: "{{
+          gluster_validation_config.redhat_storage_release }}"
+        redhat_release: "{{ gluster_validation_config.redhat_release }}"
+      with_items: "{{ gluster_pods.stdout_lines }}"
+    - set_fact:
+        dt_gluster_mismatches: "{{ dt_gluster_mismatches|default({}) |combine({
+          ('dt_mismatches_' + (item.split(' ')|list)[0]): (
+            hostvars[ansible_hostname].get(
+              ('dt_mismatches_' + (item.split(' ')|list)[0].replace('-', '_')))
+          )
+        }) }}"
+      with_items: "{{ gluster_pods.stdout_lines }}"
+      when: "hostvars[ansible_hostname].get(
+        'dt_mismatches_' +
+        (item.split(' ')|list)[0].replace('-', '_'), {}) != {}"
+    when:
+    - "((gluster_pods.stdout_lines | join('')).strip() | length) > 0"
+    - "not (hostvars['localhost'].config.cluster_validation.skip|bool)"
+  - name: VALIDATION. Validate results for every node and POD
+    fail:
+      msg: '{{ {
+        "Following mismatches are found": (
+          dt_gluster_nodes_mismatches|default({})) | combine({
+            "heketi_pod": dt_heketi_mismatches,
+            "gluster_block_provisioner_pod": dt_block_prov_mismatches,
+            "gluster_pods": dt_gluster_mismatches,
+        })
+      } }}'
+    when:
+    - "(dt_gluster_nodes_mismatches|default({}) != {}) or
+       (dt_heketi_mismatches|default({}) != {}) or
+       (dt_block_prov_mismatches|default({}) != {}) or
+       (dt_gluster_mismatches|default({}) != {})"
+    - "not (hostvars['localhost'].config.cluster_validation.skip|bool)"
