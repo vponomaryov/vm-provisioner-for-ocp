@@ -4,6 +4,13 @@
 # store filepath for the config file.
 # - 'output_artifacts_dir' - optional. It is directory where
 # generated/gathered files should be saved.
+# - 'journalctl_hours' - optional. It is integer-like option needed to
+# define amount of hours for journalctl logs to be taken. Default is 2 hours.
+# - 'copy_var_log_messages' - optional. It is boolean-like option needed to
+# either enable or disable copying of the '/var/log/messages' dir as archive
+# of files. It is disabled by default.
+# - 'run_sosreports' - optional. It is boolean-like option needed to enable
+# gathering of sos reports from all the nodes. It is disabled by default.
 #
 # Command to run this playbook:
 #
@@ -71,33 +78,6 @@
     when:
     - "'dt_glusterfs_registry' not in groups"
 
-- hosts: dt_masters
-  gather_facts: no
-  tasks:
-  - name: Init vars
-    set_fact:
-      master_ip: "{{ hostvars.keys()[0] }}"
-  - name: Read namespace of a Heketi deployment config
-    shell: "oc get dc --all-namespaces | grep heketi | awk '{ print $1}'"
-    register: heketi_namespace_raw
-  - name: Save namespace name in a separate var
-    set_fact:
-      heketi_namespace: "{{ heketi_namespace_raw.stdout.strip() }}"
-  - name: Read Heketi admin's secret
-    shell: oc get dc -n {{ heketi_namespace }} heketi-{{ heketi_namespace
-      }} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==
-        "HEKETI_ADMIN_KEY")].value}'
-    register: heketi_admin_secret_raw
-  - name: Save Heketi data to vars on the localhost
-    set_fact:
-      master_ip: "{{ hostvars.keys()[0] }}"
-      heketi_namespace: "{{ heketi_namespace_raw.stdout.strip() }}"
-      heketi_server_url: "http://{{ master_ip }}:8080"
-      heketi_cli_user: "admin"
-      heketi_cli_key: "{{ heketi_admin_secret_raw.stdout.strip() }}"
-    delegate_to: localhost
-    delegate_facts: yes
-
 - hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs
   gather_facts: no
   tasks:
@@ -108,7 +88,7 @@
       output_artifacts_dir: "{{ output_artifacts_dir
       }}{% if output_artifacts_dir[-1] != '/' %}{{ '/' }}{% endif %}"
   - name: Get hostname of the current host
-    shell: "hostname"
+    shell: "hostname -f"
     register: hostname
   - name: Save hostname to the var
     set_fact:
@@ -125,30 +105,6 @@
       name: rsync
       state: installed
     ignore_errors: yes
-
-# All nodes SOS reports
-- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
-  gather_facts: no
-  tasks:
-  - name: Install 'sos' package if absent
-    package:
-      name: sos
-      state: present
-  - name: Run sosreport command
-    shell: "sosreport --batch --verbose --tmp-dir . --label customuniquelabel"
-    register: sosreport_output
-  - name: Print the output of the sosreport command
-    debug:
-      msg: "{{ sosreport_output }}"
-  - name: Get name of the generated sos-file
-    shell: 'echo -e "{{ sosreport_output.stdout }}" | grep customuniquelabel'
-    register: sos_filepath
-  - name: Copy generated files to the localhost
-    fetch:
-      src: "{{ sos_filepath.stdout_lines[0].strip() }}"
-      dest: "{{ output_artifacts_dir }}/sosreports/"
-      flat: yes
-      fail_on_missing: yes
 
 - hosts: dt_masters
   gather_facts: no
@@ -276,11 +232,7 @@
         flat: yes
         fail_on_missing: yes
     - name: Dump the Heketi DB
-      shell: 'echo -e "$({{ heketi_pod_cmd_prefix }} heketi-cli --server {{
-        hostvars["localhost"]["heketi_server_url"] }} --user {{
-        hostvars["localhost"]["heketi_cli_user"] }} --secret {{
-        hostvars["localhost"]["heketi_cli_key"]
-        }} db dump ||
+      shell: 'echo -e "$({{ heketi_pod_cmd_prefix }} heketi-cli db dump ||
         echo \{\"error\"\:\"failed_to_get_the_Heketi_db_dump\"\})" |
         python -m json.tool > /tmp/heketi_db_dump.json'
     - name: Copy the Heketi DB dump
@@ -415,7 +367,6 @@
         msg: "{{ gluster_pod_targetcli_ls_results }}"
     - name: Write Gluster PODs data to the data file
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0] }}-targetcli-ls"
@@ -448,7 +399,6 @@
       register: gluster_pods_dmesg_results
     - name: Write Gluster PODs dmesg data to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0] }}-dmesg"
@@ -466,7 +416,6 @@
       register: gluster_pod_io_processes_info
     - name: Write Gluster PODs 'I\O' proccesses info to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0] }}-ps"
@@ -480,7 +429,6 @@
       register: sys_module_dm_multipath_results
     - name: Write Gluster PODs 'ls -l /sys/module/dm_multipath' output to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0]
@@ -495,7 +443,6 @@
       register: lsmod_target_core_results
     - name: Write Gluster PODs 'lsmod | egrep target_core' command results to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{
@@ -514,26 +461,11 @@
       register: lsblk_pvs_vgs_lvs_results
     - name: Write Gluster PODs info about PVs, VGs and LVs to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0]
                }}-lsblk_pvs_vgs_lvs"
       with_items: "{{ lsblk_pvs_vgs_lvs_results.results }}"
-
-    - name: Read 'journalctl' output
-      shell: "(oc exec {{ item }} --namespace {{ storage_namespace
-              }} -- journalctl) || echo failed_to_read_journalctl_output"
-      with_items: "{{ gluster_pod_names }}"
-      register: journalctl_results
-    - name: Write Gluster PODs 'journalctl' output to files
-      delegate_to: localhost
-      no_log: yes
-      copy:
-        content: "{{ item.stdout }}"
-        dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0]
-               }}-journalctl"
-      with_items: "{{ journalctl_results.results }}"
 
     - name: Read 'mount' output
       shell: "(oc exec {{ item }} --namespace {{ storage_namespace
@@ -542,7 +474,6 @@
       register: mount_results
     - name: Write Gluster PODs 'mount' output to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ item.stdout }}"
         dest: "{{ dir_path }}{{ (item.item.strip().split(' ') | list)[0] }}-mount"
@@ -619,7 +550,6 @@
       file:
         path: "/tmp/gluster/"
         state: directory
-      run_once: yes
 
     - name: Get storage release version from Gluster node
       shell: "(cat /etc/redhat-storage-release) ||
@@ -653,7 +583,6 @@
       register: gluster_node_targetcli_ls_results
     - name: Write Gluster node data to the data file
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ gluster_node_targetcli_ls_results.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}-targetcli-ls"
@@ -682,7 +611,6 @@
       register: gluster_node_dmesg_results
     - name: Write Gluster node dmesg data to files
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ gluster_node_dmesg_results.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}-dmesg"
@@ -697,7 +625,6 @@
       register: gluster_node_io_processes_info
     - name: Write Gluster node 'I\O' proccesses info to a file
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ gluster_node_io_processes_info.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}-ps"
@@ -708,7 +635,6 @@
       register: sys_module_dm_multipath_results
     - name: Write Gluster node 'ls -l /sys/module/dm_multipath' output to a file
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ sys_module_dm_multipath_results.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}-ls-sys_module_dm_multipath"
@@ -719,7 +645,6 @@
       register: lsmod_target_core_results
     - name: Write Gluster node 'lsmod | egrep target_core' command results to a file
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ lsmod_target_core_results.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}-lsmod_target_core"
@@ -739,22 +664,11 @@
         content: "{{ lsblk_pvs_vgs_lvs.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}_lsblk_pvs_vgs_lvs"
 
-    - name: Read 'journalctl' output
-      shell: "journalctl || echo failed_to_read_journalctl_output"
-      register: journalctl_results
-    - name: Write Gluster node 'journalctl' output to a file
-      delegate_to: localhost
-      no_log: yes
-      copy:
-        content: "{{ journalctl_results.stdout }}"
-        dest: "{{ dir_path }}{{ current_hostname }}-journalctl"
-
     - name: Read 'mount' output
       shell: "mount || echo failed_to_read_mount_output"
       register: mount_results
     - name: Write Gluster node 'mount' output to a file
       delegate_to: localhost
-      no_log: yes
       copy:
         content: "{{ mount_results.stdout }}"
         dest: "{{ dir_path }}{{ current_hostname }}-mount"
@@ -781,21 +695,19 @@
         flat: yes
         fail_on_missing: yes
 
-    - name: Create archive from '/var/log/messages' dir
-      shell: "tar -czvf var_log_messages.tar.gz /var/log/messages"
-      retries: 15
-      delay: 2
-      register: result
-      until: result is succeeded
-      ignore_errors: yes
-    - name: Copy the archive to the localhost
+    - name: Read 'journalctl' output
+      shell: "journalctl --since '{{ journalctl_hours | default(2)
+              }} hour ago' --no-pager > /tmp/gluster/{{
+              current_hostname }}-journalctl_logs_{{
+              journalctl_hours | default(2)
+              }}_hours || echo failed_to_read_journalctl_output"
+    - name: Write Gluster node 'journalctl' output to a file
       fetch:
-        src: "var_log_messages.tar.gz"
-        dest: "{{ dir_path }}{{ current_hostname }}_var_log_messages.tar.gz"
+        src: "/tmp/gluster/{{ current_hostname }}-journalctl_logs_{{
+              journalctl_hours | default(2) }}_hours"
+        dest: "{{ dir_path }}"
         flat: yes
         fail_on_missing: yes
-      ignore_errors: yes
-#    when: "not (is_gluster_containerized | bool)"
 
 # Gather info from compute nodes
 - hosts: dt_nodes
@@ -900,17 +812,46 @@
       content: "{{ dmesg_info.stdout }}"
       dest: "{{ dir_path }}{{ current_hostname }}_dmesg"
 
-  - name: Create archive from '/var/log/messages' dir
-    shell: "tar -czvf var_log_messages.tar.gz /var/log/messages"
-    retries: 15
-    delay: 2
-    register: result
-    until: result is succeeded
-    ignore_errors: yes
-  - name: Copy the archive to the localhost
-    fetch:
-      src: "var_log_messages.tar.gz"
-      dest: "{{ dir_path }}{{ current_hostname }}_var_log_messages.tar.gz"
-      flat: yes
-      fail_on_missing: yes
-    ignore_errors: yes
+- hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
+  gather_facts: no
+  tasks:
+  - block:
+    - name: Create archive from '/var/log/messages' dir
+      shell: "tar --warning=no-file-changed -czvf var_log_messages.tar.gz /var/log/messages"
+      retries: 3
+      delay: 3
+      register: result
+      until: result.rc in [0, 1]
+      warn: no
+      ignore_errors: yes
+    - name: Copy the archive to the localhost
+      fetch:
+        src: "var_log_messages.tar.gz"
+        dest: "{{ dir_path }}{{ current_hostname }}_var_log_messages.tar.gz"
+        flat: yes
+        fail_on_missing: yes
+      ignore_errors: yes
+    when: "copy_var_log_messages | default('no') | bool"
+
+  # All nodes SOS reports
+  - block:
+    - name: Install 'sos' package if absent
+      package:
+        name: sos
+        state: present
+    - name: Run sosreport command
+      shell: "sosreport --batch --verbose --tmp-dir . --label customuniquelabel"
+      register: sosreport_output
+    - name: Print the output of the sosreport command
+      debug:
+        msg: "{{ sosreport_output }}"
+    - name: Get name of the generated sos-file
+      shell: 'echo -e "{{ sosreport_output.stdout }}" | grep customuniquelabel'
+      register: sos_filepath
+    - name: Copy generated files to the localhost
+      fetch:
+        src: "{{ sos_filepath.stdout_lines[0].strip() }}"
+        dest: "{{ output_artifacts_dir }}/sosreports/"
+        flat: yes
+        fail_on_missing: yes
+    when: "run_sosreports | default('no') | bool"
