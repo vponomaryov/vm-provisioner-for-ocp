@@ -181,6 +181,19 @@
           OCP nodes: "{{ master_ocp_nodes.stdout_lines }}"
           Images info: "{{ master_image_info.stdout_lines }}"
 
+  # Info about PVCs and PVs
+  - name: Get info about all the PVCs and PVs
+    shell: "oc get {{ item }} --all-namespaces -o wide ; oc get {{
+            item }} --all-namespaces -o yaml"
+    register: oc_pvc_and_pv_results
+    with_items: ['pvc', 'pv']
+  - name: Save info about all the PVCs and PVs
+    delegate_to: localhost
+    copy:
+      content: "{{ item.stdout }}"
+      dest: "{{ output_artifacts_dir }}oc_{{ item.item }}_all_info.yaml"
+    with_items: "{{ oc_pvc_and_pv_results.results }}"
+
   # Heketi POD logs, config and DB dump
   - name: Get heketi POD
     shell: "oc get pods --all-namespaces -l heketi --no-headers
