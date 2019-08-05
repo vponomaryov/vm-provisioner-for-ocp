@@ -229,31 +229,33 @@
         }} cat /etc/heketi/heketi.json ||
         echo error_failed_to_get_the_heketi_config_file)" |
         tee /tmp/heketi_config.json'
-    - name: Copy the Heketi config
-      fetch:
-        src: "/tmp/heketi_config.json"
-        dest: "{{ dir_path }}"
-        flat: yes
-        fail_on_missing: yes
+    - name: Gather 'heketi oc events'
+      shell: |
+        oc get events --sort-by='.metadata.creationTimestamp' \
+        -o jsonpath="{range .items[?('heketi' in @.involvedObject.name)]}\
+        {'namespace: '}{@.involvedObject.namespace}{'\n'}\
+        {'kind: '}{@.involvedObject.kind}{'\n'}\
+        {'name: '}{@.involvedObject.name}{'\n'}\
+        {'lastTimestamp: '}{@.lastTimestamp}{'\n'}\
+        {'message: '}{@.message}{'\n\n'}{ end }" > /tmp/heketi_oc_events.log
     - name: Save Heketi POD logs
       shell: "(oc logs {{ heketi_pod_name }} ||
-        echo 'ERROR! Failed to get the Heketi logs.') > /tmp/heketi.log"
-    - name: Copy the Heketi logs
-      fetch:
-        src: "/tmp/heketi.log"
-        dest: "{{ dir_path }}"
-        flat: yes
-        fail_on_missing: yes
+        echo 'ERROR! Failed to get the Heketi logs.') > /tmp/heketi_oc_pod.log"
     - name: Dump the Heketi DB
       shell: 'echo -e "$({{ heketi_pod_cmd_prefix }} heketi-cli db dump ||
         echo \{\"error\"\:\"failed_to_get_the_Heketi_db_dump\"\})" |
         python -m json.tool > /tmp/heketi_db_dump.json'
-    - name: Copy the Heketi DB dump
+    - name: Copy files from the master node to the ansible runner machine
       fetch:
-        src: "/tmp/heketi_db_dump.json"
+        src: "{{ item }}"
         dest: "{{ dir_path }}"
         flat: yes
         fail_on_missing: yes
+      with_items:
+      - "/tmp/heketi_config.json"
+      - "/tmp/heketi_oc_events.log"
+      - "/tmp/heketi_oc_pod.log"
+      - "/tmp/heketi_db_dump.json"
     - name: Get storage release version from Heketi POD
       shell: "{{ heketi_pod_cmd_prefix }} cat /etc/redhat-storage-release ||
               echo failed_to_read_redhat_storage_release_info"
