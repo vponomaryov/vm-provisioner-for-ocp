@@ -245,6 +245,17 @@
       shell: 'echo -e "$({{ heketi_pod_cmd_prefix }} heketi-cli db dump ||
         echo \{\"error\"\:\"failed_to_get_the_Heketi_db_dump\"\})" |
         python -m json.tool > /tmp/heketi_db_dump.json'
+    - name: Get list of file and block volumes
+      shell: 'echo -e "$({{ heketi_pod_cmd_prefix
+        }} heketi-cli {{ item }}volume list ||
+        echo error_failed_to_get_the_heketi_{{ item }}volume_list)" |
+        tee /tmp/heketi_{{ item }}volume_list.log'
+      with_items: ['', 'block']
+    - name: Get heketi topology info
+      shell: 'echo -e "$({{ heketi_pod_cmd_prefix
+        }} heketi-cli topology info ||
+        echo error_failed_to_get_the_heketi_topology_info)" |
+        tee /tmp/heketi_topology_info.log'
     - name: Copy files from the master node to the ansible runner machine
       fetch:
         src: "{{ item }}"
@@ -256,6 +267,9 @@
       - "/tmp/heketi_oc_events.log"
       - "/tmp/heketi_oc_pod.log"
       - "/tmp/heketi_db_dump.json"
+      - "/tmp/heketi_volume_list.log"
+      - "/tmp/heketi_blockvolume_list.log"
+      - "/tmp/heketi_topology_info.log"
     - name: Get storage release version from Heketi POD
       shell: "{{ heketi_pod_cmd_prefix }} cat /etc/redhat-storage-release ||
               echo failed_to_read_redhat_storage_release_info"
@@ -316,6 +330,26 @@
     - debug:
         msg: "{{ gluster_pod_names }}"
 
+    - name: Get gluster volume info
+      shell: 'echo -e "$(oc exec {{ gluster_pod_names[0]
+        }} --namespace {{ storage_namespace }} -- gluster v info
+        || echo failed_to_get_gluster_vol_info)" | tee /tmp/gluster_v_info.log'
+    - name: Get Gluster block volume info
+      shell: 'echo "" > /tmp/gluster_block_list.log ;
+        for bhv in $(oc exec {{ gluster_pod_names[0] }} --namespace {{
+          storage_namespace }} -- gluster v list); do
+        echo -e "$bhv: \n$(oc exec {{ gluster_pod_names[0] }} --namespace {{
+          storage_namespace }} -- gluster-block list $bhv --json-pretty)\n\n"
+        >> /tmp/gluster_block_list.log; done'
+    - name: Copy files from the master node to the ansible runner machine
+      fetch:
+        src: "{{ item }}"
+        dest: "{{ dir_path }}"
+        flat: yes
+        fail_on_missing: yes
+      with_items:
+      - "/tmp/gluster_v_info.log"
+      - "/tmp/gluster_block_list.log"
     - name: Get storage release version from Gluster PODs
       shell: "(oc exec {{ item }} --namespace {{ storage_namespace }} --
           cat /etc/redhat-storage-release) ||
@@ -566,6 +600,29 @@
         path: "/tmp/gluster/"
         state: directory
 
+    - block:
+      - name: Get gluster volume info
+        shell: 'echo -e "$(gluster v info ||
+          echo failed_to_get_gluster_vol_info)" |
+          tee /tmp/gluster/gluster_v_info.log'
+        run_once: yes
+      - name: Get Gluster block volume info
+        shell: 'echo "" > /tmp/gluster/gluster_block_list.log ;
+          for bhv in $(gluster v list); do
+          echo -e "$bhv: \n$(gluster-block list $bhv --json-pretty)\n\n" >>
+          /tmp/gluster/gluster_block_list.log; done'
+        run_once: yes
+      - name: Copy files from the master node to the ansible runner machine
+        fetch:
+          src: "{{ item }}"
+          dest: "{{ dir_path }}"
+          flat: yes
+          fail_on_missing: yes
+        with_items:
+        - "/tmp/gluster/gluster_v_info.log"
+        - "/tmp/gluster/gluster_block_list.log"
+        run_once: yes
+      when: "not (is_gluster_containerized | bool)"
     - name: Get storage release version from Gluster node
       shell: "(cat /etc/redhat-storage-release) ||
               echo failed_to_get_redhat_storage_release_info"
