@@ -82,11 +82,11 @@
   gather_facts: no
   tasks:
   - set_fact:
-      output_artifacts_dir: "{{
-          (output_artifacts_dir | default('../cluster_logs')) }}/"
+      dt_output_artifacts_dir: "{{
+          (output_artifacts_dir | default('../cluster_logs')) }}"
   - set_fact:
-      output_artifacts_dir: "{{ output_artifacts_dir
-      }}{% if output_artifacts_dir[-1] != '/' %}{{ '/' }}{% endif %}"
+      dt_output_artifacts_dir: "{{ dt_output_artifacts_dir
+      }}{% if dt_output_artifacts_dir[-1] != '/' %}{{ '/' }}{% endif %}"
   - name: Get hostname of the current host
     shell: "hostname -f"
     register: hostname
@@ -97,7 +97,7 @@
   - name: Create output artifacts directory if absent
     delegate_to: localhost
     file:
-      path: "{{ output_artifacts_dir }}/"
+      path: "{{ dt_output_artifacts_dir }}"
       state: directory
     run_once: yes
   - name: Install 'rsync' package which is required by 'synchronize' module
@@ -168,7 +168,7 @@
   - name: Write master data to the data file
     delegate_to: localhost
     yedit:
-      src: "{{ output_artifacts_dir }}/master_data.yaml"
+      src: "{{ dt_output_artifacts_dir }}master_data.yaml"
       state: present
       edits:
       - key: master
@@ -191,7 +191,7 @@
     delegate_to: localhost
     copy:
       content: "{{ item.stdout }}"
-      dest: "{{ output_artifacts_dir }}oc_{{ item.item }}_all_info.yaml"
+      dest: "{{ dt_output_artifacts_dir }}oc_{{ item.item }}_all_info.yaml"
     with_items: "{{ oc_pvc_and_pv_results.results }}"
 
   # Heketi POD logs, config and DB dump
@@ -208,7 +208,7 @@
   - block:
     - name: Create var with destination dir path
       set_fact:
-        dir_path: "{{ output_artifacts_dir }}/heketi_pod/"
+        dir_path: "{{ dt_output_artifacts_dir }}heketi_pod/"
     - name: Create compute directory if absent
       delegate_to: localhost
       file:
@@ -312,7 +312,7 @@
   - block:
     - name: Create var with destination dir path
       set_fact:
-        dir_path: "{{ output_artifacts_dir }}/gluster_pods/"
+        dir_path: "{{ dt_output_artifacts_dir }}gluster_pods/"
     - name: Create directory if absent
       delegate_to: localhost
       file:
@@ -588,7 +588,7 @@
   - block:
     - name: Create var with destination dir path
       set_fact:
-        dir_path: "{{ output_artifacts_dir }}/gluster_nodes/"
+        dir_path: "{{ dt_output_artifacts_dir }}gluster_nodes/"
     - name: Create directory for Gluster nodes on localhost if such absent
       delegate_to: localhost
       file:
@@ -797,7 +797,7 @@
   tasks:
   - name: Create var with destination dir path
     set_fact:
-      dir_path: "{{ output_artifacts_dir }}/compute_nodes/"
+      dir_path: "{{ dt_output_artifacts_dir }}compute_nodes/"
   - name: Create compute directory if absent
     delegate_to: localhost
     file:
@@ -923,7 +923,7 @@
     - name: Copy generated files to the localhost
       fetch:
         src: "{{ sos_filepath.stdout_lines[0].strip() }}"
-        dest: "{{ output_artifacts_dir }}/sosreports/"
+        dest: "{{ dt_output_artifacts_dir }}sosreports/"
         flat: yes
         fail_on_missing: yes
     when: "run_sosreports | default('no') | bool"
