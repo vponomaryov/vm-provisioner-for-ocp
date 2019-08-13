@@ -209,3 +209,11 @@
           heketi_dc_name: "{{ heketi_dc_name }}"
           heketi_server_url: "http://{{ master_ip }}:8080"
           heketi_service_name: "{{ heketi_svc_name }}"
+      - key: cloud_provider
+        value:
+          name: vmware
+          vmware:
+            hostname: "{{ hostvars['localhost'].config.vmware.host }}"
+            username: "{{ hostvars['localhost'].config.vmware.username }}"
+            password: "{{ hostvars['localhost'].config.vmware.password }}"
+            port: 443
