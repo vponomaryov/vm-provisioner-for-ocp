@@ -297,6 +297,18 @@ def validate_config_structure(module, config):
                                    "gluster_block_provisioner_pod")}.items()
             ),
         ),
+        schema.Optional("tests_config_updates", default={}): schema.Or(
+            schema.Use(lambda o: (
+                {"common.allow_heketi_zones_update": False,
+                 "common.stop_on_first_failure": False}
+                if (o is None) else {}[
+                    "Only 'dict' and 'None' values are allowed"])
+            ),
+            schema.Use(lambda o: (
+                o if isinstance(o, dict) else {}[
+                    "Only 'dict' and 'None' values are allowed"])
+            ),
+        ),
         "common": schema.Or(
             schema.Use(lambda o: (
                 {"output_tests_config_file": common_default["output_tests_config_file"],
