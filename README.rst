@@ -104,7 +104,7 @@ deployment.
 
 .. code-block:: console
 
-    $ yum install python-pip git libselinux-python
+    $ yum install python-pip git libselinux-python libffi-devel gcc python-devel
 
 - Install “tox” if not installed yet:
 
