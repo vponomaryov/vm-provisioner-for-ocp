@@ -58,6 +58,16 @@
     with_items: "{{ config.vmware.vm_parameters.glusterfs_registry.names }}"
     when:
     - "'dt_glusterfs_registry' not in groups"
+  # TODO(vponomar): update following when support for other DNS servers than
+  # 'dnsmasq' is added.
+  - name: Add dnsmasq-based DNS nodes if not added yet
+    add_host:
+      name: "{{ item.server_hostname }}"
+      group: dns_dnsmasq_servers
+      ansible_user: "{{ item.server_username }}"
+      dnsmasq_config_filepath: "{{ item.config_filepath }}"
+    with_items: "{{ config.vm.dns.servers }}"
+    when: "{{ config.vm.dns.servers }}"
 
 - hosts: dt_masters, dt_nodes, dt_glusterfs, dt_glusterfs_registry
   gather_facts: no
@@ -101,3 +111,30 @@
                        groups.get('dt_nodes', []) +
                        groups.get('dt_glusterfs', []) +
                        groups.get('dt_glusterfs_registry', [])) | unique }}"
+
+- hosts: dns_dnsmasq_servers
+  gather_facts: no
+  tasks:
+  - name: Gather list of VM hostnames to be deleted
+    set_fact:
+      hostnames_for_removal: "{{ hostnames_for_removal | default({}) |
+                                combine({item: None}, recursive=True) }}"
+    with_items: "{{ (groups.get('dt_masters', []) +
+                     groups.get('dt_nodes', []) +
+                     groups.get('dt_glusterfs', []) +
+                     groups.get('dt_glusterfs_registry', [])) | unique }}"
+
+  - name: Update remote DNS servers which are hosted using 'dnsmasq' service
+    import_role:
+      name: add-routing-info-to-dnsmasq
+    vars:
+      hostnames_ip_mapping: "{{ hostnames_for_removal }}"
+    when:
+    - "{{ hostvars['localhost'].config.vm.dns.update_remote_dns_servers | bool }}"
+  - name: Restart 'dnsmasq' service
+    service:
+      name: dnsmasq
+      state: restarted
+      enabled: yes
+    when:
+    - "{{ hostvars['localhost'].config.vm.dns.update_remote_dns_servers | bool }}"

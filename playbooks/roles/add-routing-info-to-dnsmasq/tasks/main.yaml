@@ -11,7 +11,7 @@
     state: directory
     mode: 0644
 
-- name: Create custom dnsmasq config file for current cluster
+- name: Create custom dnsmasq config file
   file:
     dest: "{{ dnsmasq_config_filepath }}"
     state: touch
@@ -22,6 +22,7 @@
     regexp: "{{ item.key }}"
     state: absent
   with_dict: "{{ hostnames_ip_mapping }}"
+  when: "hostnames_ip_mapping"
 
 - name: Write data to custom dnsmasq config file
   lineinfile:
@@ -29,3 +30,17 @@
     line: "address=/{{ item.key }}/{{ item.value }}"
     state: present
   with_dict: "{{ hostnames_ip_mapping }}"
+  when:
+  - "item.key"
+  - "item.value"
+
+- name: Check whether custom dnsmasq config file is empty or not
+  stat:
+    path: "{{ dnsmasq_config_filepath }}"
+  register: dnsmasq_config_file_info
+
+- name: Delete custom dnsmasq config file if it is empty
+  file:
+    dest: "{{ dnsmasq_config_filepath }}"
+    state: absent
+  when: "dnsmasq_config_file_info.stat.size < 1"

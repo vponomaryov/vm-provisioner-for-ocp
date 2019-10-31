@@ -55,6 +55,15 @@ vmware:
       storage_disks_gb: [10, 20, 10]
       storage_disks_type: thin
 vm:
+  dns:
+    update_remote_dns_servers: yes
+    servers:
+    - type: dnsmasq
+      config_filepath: "/etc/dnsmasq.d/dt-optional-file-name.conf"
+      server_username: root
+      server_hostname: 192.168.0.1
+    - type: dnsmasq
+      server_hostname: 192.168.0.2
   repo:
     upstream:
       skip: no

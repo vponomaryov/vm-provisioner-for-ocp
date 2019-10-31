@@ -125,6 +125,25 @@ def validate_config_structure(module, config):
             } for node_type in node_types if node_type != "all"}
         },
         "vm": {
+            schema.Optional("dns",
+                            default={"update_remote_dns_servers": False}): {
+                schema.Optional("update_remote_dns_servers",
+                                default=False): bool,
+                schema.Optional("servers", default=[]): schema.Or(
+                    [{
+                        "type": schema.And(str, lambda s: s in ("dnsmasq", )),
+                        schema.Optional("config_filepath",
+                                        default=("/etc/dnsmasq.d/dt-unsorted-"
+                                                 "mapping.conf")): schema.And(
+                            str, lambda s: s.startswith("/")),
+                        schema.Optional("server_username", default="root"): (
+                            schema.And(str, len)),
+                        "server_hostname": schema.And(str, len),
+                    }],
+                    schema.Use(lambda o: ([] if o is None else {}[
+                        "Only 'None' or 'list' objects are allowed"])),
+                ),
+            },
             "repo": {
                 "upstream": {
                     schema.Optional("skip", default=True): bool,
