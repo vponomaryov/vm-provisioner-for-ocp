@@ -164,6 +164,41 @@
       )}}"
     with_items: "{{ gluster_nodes_addresses_raw.stdout_lines }}"
 
+  # Additional Gluster servers logic
+  - name: Get IP addresses of the additional Gluster servers
+    shell: 'echo "$(hostname -f) $(hostname -i)"'
+    delegate_to: "{{ item }}"
+    with_items: "{{ hostvars['localhost'].glusterfs_cfg.names }}"
+    when:
+    - "(gluster_servers_data | length | int) < (
+          hostvars['localhost'].glusterfs_cfg.names | length | int)"
+    - "item not in gluster_devices_data.keys()"
+    register: additional_g_servers_hostnames_and_ips_raw
+  - name: Gather device names for the additional Gluster servers
+    set_fact:
+      additional_gluster_servers_devices: "{{
+        storage_disks_letters | map(
+          'regex_replace',
+          '(.*)',
+          gluster_devices_raw.stdout_lines[0].split(' ')[1] + '\\1'
+        ) | list
+      }}"
+  - name: Process the additional Gluster servers data and save results to a var
+    delegate_to: localhost
+    connection: local
+    set_fact:
+      additional_gluster_servers_data: "{{ additional_gluster_servers_data |
+        default({}) | combine(
+          {item.stdout.split(' ')[1]: {
+            'manage': item.stdout.split(' ')[0],
+            'storage': item.stdout.split(' ')[1],
+            'devices': additional_gluster_servers_devices,
+          }}
+        )}}"
+    with_items: "{{ additional_g_servers_hostnames_and_ips_raw.results }}"
+    when: "item.item not in gluster_devices_data.keys()"
+
+  # Tests config file update
   - name: Save all the calculated data to the tests config file
     delegate_to: localhost
     connection: local
@@ -218,6 +253,8 @@
             username: "{{ hostvars['localhost'].config.vmware.username }}"
             password: "{{ hostvars['localhost'].config.vmware.password }}"
             port: 443
+      - key: additional_gluster_servers
+        value: "{{ additional_gluster_servers_data | default({}) }}"
   - name: Update tests config file with custom option values
     delegate_to: localhost
     connection: local
