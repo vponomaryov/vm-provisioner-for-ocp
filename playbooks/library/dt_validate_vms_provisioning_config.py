@@ -126,7 +126,8 @@ def validate_config_structure(module, config):
         },
         "vm": {
             schema.Optional("dns",
-                            default={"update_remote_dns_servers": False}): {
+                            default={"update_remote_dns_servers": False,
+                                     "servers": []}): {
                 schema.Optional("update_remote_dns_servers",
                                 default=False): bool,
                 schema.Optional("servers", default=[]): schema.Or(
