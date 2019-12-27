@@ -198,6 +198,73 @@
     with_items: "{{ additional_g_servers_hostnames_and_ips_raw.results }}"
     when: "item.item not in gluster_devices_data.keys()"
 
+  - name: Read namespace and name of the registry Heketi deployment config
+    shell: oc get dc --all-namespaces | grep -e heketi | grep -e registry | awk '{ print $1 " "$2 }'
+    register: r_heketi_namespace_dcname_raw
+  - name: Save registry namespace name in a separate var
+    set_fact:
+      r_heketi_namespace: "{{
+        (r_heketi_namespace_dcname_raw.stdout.strip().split() + ['']) [0].strip() }}"
+      r_heketi_dc_name: "{{
+        (r_heketi_namespace_dcname_raw.stdout.strip().split() + ['', ''])[1].strip() }}"
+  - block:
+    - name: Read registry Heketi service name
+      shell: "oc get svc -n {{ r_heketi_namespace
+        }} | grep -e heketi | grep -e registry | grep -v heketi-db | awk '{ print $1}'"
+      register: r_heketi_svc_name_raw
+    - name: Save registry Heketi service name in a separate var
+      set_fact:
+        r_heketi_svc_name: "{{ r_heketi_svc_name_raw.stdout.strip() }}"
+    - name: Read registry Heketi service IP address
+      shell: "oc get svc {{ r_heketi_svc_name }} -n {{ r_heketi_namespace
+        }} -o=custom-columns=:.spec.clusterIP --no-headers"
+      register: r_heketi_ip_raw
+    - name: Save registry Heketi IP address in a separate var
+      set_fact:
+        r_heketi_ip: "{{ r_heketi_ip_raw.stdout.strip() }}"
+    - name: Read registry Heketi admin's secret
+      shell: oc get dc -n {{ r_heketi_namespace }} {{
+        r_heketi_namespace_dcname_raw.stdout.strip().split()[1].strip()
+        }} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==
+          "HEKETI_ADMIN_KEY")].value}'
+      register: r_heketi_admin_secret_raw
+    - name: Save registry Heketi admin secret to a var
+      set_fact:
+        r_heketi_admin_secret: "{{ r_heketi_admin_secret_raw.stdout.strip() }}"
+    - name: Read registry Gluster nodes addresses
+      shell: "heketi-cli --server=http://{{
+          r_heketi_ip }}:8080 --user=admin --secret={{
+        r_heketi_admin_secret }} topology info --json |
+          python -c \"from __future__ import print_function; import sys, json;
+          topology = json.loads(sys.stdin.readlines()[0]);
+          ips = [(n['hostnames']['manage'][0], n['hostnames']['storage'][0])
+                 for n in topology['clusters'][0]['nodes']];
+          [print(ip[0], ip[1]) for ip in ips]\""
+      register: r_gluster_nodes_addresses_raw
+    - name: Process registry Gluster data and save it to a var
+      set_fact:
+        r_gluster_servers_data: "{{ r_gluster_servers_data | default({}) | combine(
+          {item.split(' ')[1]: {
+            'manage': item.split(' ')[0],
+            'storage': item.split(' ')[1],
+          }}
+        )}}"
+      with_items: "{{ r_gluster_nodes_addresses_raw.stdout_lines }}"
+    when: "r_heketi_namespace | length > 0 and r_heketi_dc_name | length > 0"
+
+  - name: Get heapster and hawkular replication controllers info
+    shell: oc get rc --all-namespaces | grep -e {{ item }} | awk '{print $1; print $2}'
+    with_items: ['heapster', 'hawkular-cassandra', 'hawkular-metrics']
+    register: heapster_and_hawkular_rcs
+  - name: Process 'heapster' and 'hawkular' replication controllers info
+    set_fact:
+      metrics_data: "{{ metrics_data | default({}) | combine({
+        'metrics_rc_' + item.item.replace('-', '_'): item.stdout_lines[1],
+        'metrics_project_name': item.stdout_lines[0],
+      }) }}"
+    with_items: "{{ heapster_and_hawkular_rcs.results }}"
+    when: "item.stdout_lines != []"
+
   # Tests config file update
   - name: Save all the calculated data to the tests config file
     delegate_to: localhost
@@ -255,6 +322,50 @@
             port: 443
       - key: additional_gluster_servers
         value: "{{ additional_gluster_servers_data | default({}) }}"
+  - name: Save registry Gluster data if present
+    delegate_to: localhost
+    connection: local
+    yedit:
+      src: "{{ output_filepath }}"
+      state: present
+      backup: false
+      edits:
+      - key: gluster_registry_servers
+        value: "{{ r_gluster_servers_data }}"
+    when: "r_gluster_servers_data is defined"
+  - name: Save registry Heketi data if present
+    delegate_to: localhost
+    connection: local
+    yedit:
+      src: "{{ output_filepath }}"
+      state: present
+      backup: false
+      edits:
+      - key: openshift.registry_heketi_config
+        value:
+          heketi_cli_key: "{{ r_heketi_admin_secret }}"
+          heketi_cli_user: "admin"
+          heketi_client_node: "{{ master_ip }}"
+          heketi_dc_name: "{{ r_heketi_dc_name }}"
+          heketi_server_url: "http://{{ r_heketi_ip }}:8080"
+          heketi_service_name: "{{ r_heketi_svc_name }}"
+    when:
+    - "r_heketi_admin_secret is defined"
+    - "r_heketi_dc_name is defined"
+    - "r_heketi_ip is defined"
+    - "r_heketi_svc_name is defined"
+  - name: Save OpenShift metrics data if present
+    delegate_to: localhost
+    connection: local
+    yedit:
+      src: "{{ output_filepath }}"
+      state: present
+      backup: false
+      edits:
+      - key: openshift.metrics
+        value: "{{ metrics_data }}"
+    when:
+    - "metrics_data is defined"
   - name: Update tests config file with custom option values
     delegate_to: localhost
     connection: local
