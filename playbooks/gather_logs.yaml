@@ -18,16 +18,6 @@
 #     gather_logs.yaml \
 #     -e config_filepath=/path/to/the/config.yaml \
 #     -e output_artifacts_dir=../cluster_logs/
-#
-# Requirements:
-# - 'yedit' module should be enabled. It will be enabled running this playbook
-#   via 'tox' command.
-# - playbook should run only on one host - OpenShift master node.
-#
-# Notes:
-# - tox's env name can be any of the following:
-#   'ocp3.6', 'ocp3.7', 'ocp3.9', 'ocp3.10' or 'ocp3.11'. The criterion is
-#   to have 'yedit' module enabled. Which is enabled in any of those envs.
 ---
 - hosts: localhost
   connection: local
@@ -167,7 +157,7 @@
     register: master_image_info
   - name: Write master data to the data file
     delegate_to: localhost
-    yedit:
+    dt_yedit:
       src: "{{ dt_output_artifacts_dir }}master_data.yaml"
       state: present
       edits:
@@ -281,7 +271,7 @@
       register: heketi_pod_packages
     - name: Write Heketi data to the data file
       delegate_to: localhost
-      yedit:
+      dt_yedit:
         src: "{{ dir_path }}heketi_pod_data.yaml"
         state: present
         edits:
@@ -396,7 +386,7 @@
       with_items: "{{ gluster_pod_service_list_results.results }}"
     - name: Write Gluster PODs data to the data file
       delegate_to: localhost
-      yedit:
+      dt_yedit:
         src: "{{ dir_path }}gluster_pods_packages_and_services_data.yaml"
         state: present
         edits:
@@ -639,7 +629,7 @@
       register: gluster_node_service_list_results
     - name: Write Gluster node data to the data file
       delegate_to: localhost
-      yedit:
+      dt_yedit:
         src: "{{ dir_path }}gluster_nodes_packages_and_services_data.yaml"
         state: present
         edits:

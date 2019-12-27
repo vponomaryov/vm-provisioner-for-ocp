@@ -15,16 +15,6 @@
 # $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
 #     5_generate_tests_config.yaml \
 #     -e config_filepath=/path/to/the/config.yaml
-#
-# Requirements:
-# - 'yedit' module should be enabled. It will be enabled running this playbook
-#   via 'tox' command.
-# - playbook should run only on one host - OpenShift master node.
-#
-# Notes:
-# - tox's env name can be any of the following:
-#   'ocp3.6', 'ocp3.7', 'ocp3.9', 'ocp3.10' or 'ocp3.11'. The criterion is
-#   to have 'yedit' module enabled. Which is enabled in any of those envs.
 ---
 - hosts: localhost
   gather_facts: no
@@ -269,7 +259,7 @@
   - name: Save all the calculated data to the tests config file
     delegate_to: localhost
     connection: local
-    yedit:
+    dt_yedit:
       src: "{{ output_filepath }}"
       state: present
       backup: false
@@ -325,7 +315,7 @@
   - name: Save registry Gluster data if present
     delegate_to: localhost
     connection: local
-    yedit:
+    dt_yedit:
       src: "{{ output_filepath }}"
       state: present
       backup: false
@@ -336,7 +326,7 @@
   - name: Save registry Heketi data if present
     delegate_to: localhost
     connection: local
-    yedit:
+    dt_yedit:
       src: "{{ output_filepath }}"
       state: present
       backup: false
@@ -357,7 +347,7 @@
   - name: Save OpenShift metrics data if present
     delegate_to: localhost
     connection: local
-    yedit:
+    dt_yedit:
       src: "{{ output_filepath }}"
       state: present
       backup: false
@@ -369,7 +359,7 @@
   - name: Update tests config file with custom option values
     delegate_to: localhost
     connection: local
-    yedit:
+    dt_yedit:
       src: "{{ output_filepath }}"
       state: present
       backup: false

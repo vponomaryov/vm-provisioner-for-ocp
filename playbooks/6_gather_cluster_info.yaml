@@ -15,16 +15,6 @@
 # $ tox -e ocp3.11 -- ansible-playbook -i inventory-file.yaml \
 #     6_gather_cluster_info.yaml \
 #     -e config_filepath=/path/to/the/config.yaml
-#
-# Requirements:
-# - 'yedit' module should be enabled. It will be enabled running this playbook
-#   via 'tox' command.
-# - playbook should run only on one host - OpenShift master node.
-#
-# Notes:
-# - tox's env name can be any of the following:
-#   'ocp3.6', 'ocp3.7', 'ocp3.9', 'ocp3.10' or 'ocp3.11'. The criterion is
-#   to have 'yedit' module enabled. Which is enabled in any of those envs.
 ---
 # Ansible runner machine info
 - hosts: localhost
@@ -105,7 +95,7 @@
             }}.tito/packages/openshift-ansible | awk '{print $1}')\""
     register: ansible_runner_oc_lib_version
   - name: Write ansible runner data to the data file
-    yedit:
+    dt_yedit:
       src: "{{ data_file_path }}"
       state: present
       backup: false
@@ -184,7 +174,7 @@
     register: master_image_info
   - name: Write master data to the data file
     delegate_to: localhost
-    yedit:
+    dt_yedit:
       src: "{{ hostvars['localhost']['data_file_path'] }}"
       state: present
       edits:
@@ -219,7 +209,7 @@
       register: heketi_pod_packages
     - name: Write Heketi data to the data file
       delegate_to: localhost
-      yedit:
+      dt_yedit:
         src: "{{ hostvars['localhost']['data_file_path'] }}"
         state: present
         edits:
@@ -285,7 +275,7 @@
       with_items: "{{ gluster_pod_service_list_results.results }}"
     - name: Write Gluster PODs data to the data file
       delegate_to: localhost
-      yedit:
+      dt_yedit:
         src: "{{ hostvars['localhost']['data_file_path'] }}"
         state: present
         edits:
@@ -349,7 +339,7 @@
       register: gluster_node_service_list
     - name: Write Gluster nodes data to the data file
       delegate_to: localhost
-      yedit:
+      dt_yedit:
         src: "{{ hostvars['localhost']['data_file_path'] }}"
         state: present
         edits:
